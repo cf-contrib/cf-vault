@@ -59,15 +59,16 @@ fn no_aws_variable_is_added_when_none_was_set() {
 }
 
 #[test]
-fn an_oauth_profile_with_an_r2_bucket_and_no_broker_is_rejected_at_load() {
+fn an_r2_bucket_is_rejected_next_to_a_broker_exchange() {
     let ws = Workspace::new(
-        "[a]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n[a.r2]\nbucket = \"tf-state\"\n",
+        "[a]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n[a.r2]\nbucket = \"tf-state\"\n\
+         [a.oauth2.exchange]\nurl = \"https://broker.example\"\nprofile = \"p\"\n",
     );
     let out = run(&ws, &["list"]);
     assert_eq!(out.code, Some(1));
     assert!(
         out.stderr
-            .contains("only supported for type = \"api_token\""),
+            .contains("not allowed together with \"exchange\""),
         "{}",
         out.stderr
     );

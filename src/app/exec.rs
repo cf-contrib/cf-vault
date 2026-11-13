@@ -106,16 +106,22 @@ impl ExecCommand {
 
         let mut credentials = self.credentials(&profile, args)?;
 
-        // Direct R2 credentials come from a static token
-        if let (Kind::ApiToken, Some(r2_settings)) = (&profile.kind, &profile.r2) {
+        // Without a broker, R2 credentials come from the profile's token: an API token is the
+        // parent itself; for an OAuth session, a short-lived token is minted as the parent
+        if let Some(r2_settings) = &profile.r2 {
             let token = credentials
                 .api_token
                 .clone()
-                .expect("an api_token profile always has a token");
+                .expect("a profile without a broker always has a token");
             let lifetime = ttl
                 .map(|t| Duration::from_secs(t.secs))
                 .unwrap_or(r2::DEFAULT_TTL);
-            let r2 = r2::derive(&profile.account_id, &token, r2_settings, lifetime)?;
+            let r2 = match profile.kind {
+                Kind::ApiToken => r2::derive(&profile.account_id, &token, r2_settings, lifetime)?,
+                Kind::OAuth2(_) => {
+                    r2::derive_minting(&profile.account_id, &token, r2_settings, lifetime)?
+                }
+            };
             credentials.expires_at = credentials
                 .earliest(credentials.expires_at)
                 .or(r2.expires_at);

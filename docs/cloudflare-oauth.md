@@ -51,7 +51,9 @@ cf-vault exec -p personal -- wrangler deploy
 - **Sensitive scopes**, such as `account-api-tokens.write`, appear under "Sensitive scopes" on the
   consent screen and must be switched on, or the authorization fails.
 - **The access token works as `CLOUDFLARE_API_TOKEN`**: it is opaque, lasts about an hour, and the
-  API accepts it as a bearer. The `tokens/verify` endpoints do not recognize it, which is why
-  [direct R2 credentials](r2.md) need a static API token.
+  API accepts it as a bearer. Refreshing returns a new refresh token each time; cf-vault saves it
+  before using the new access token. The `tokens/verify` endpoints do not recognize it, so for
+  [R2 credentials](r2.md) cf-vault mints a short-lived token with `account-api-tokens.write`
+  instead.
 - You can revoke an application's access under *My Profile → Access Management → Connected
   Applications*.

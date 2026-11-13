@@ -21,6 +21,7 @@ mod areas {
     pub mod permissions;
     pub mod profile_changes;
     pub mod r2;
+    pub mod r2_oauth;
     pub mod redaction;
     pub mod refresh;
     pub mod secret_hygiene;

@@ -1,4 +1,5 @@
-//! Temporary R2 credentials derived from a static API token (no broker).
+//! Temporary R2 credentials derived without a broker, from an API token or, with a short-lived
+//! token minted for the purpose, from an OAuth session.
 //!
 //! The Cloudflare API takes the parent token as the bearer and the parent's access key id (the
 //! token's id) in the body, so the secret half of the parent never leaves this machine. The
@@ -12,7 +13,7 @@ use time::OffsetDateTime;
 use crate::vault::{
     auth::{redact::Secret, token::http_client},
     cloudflare::creds::R2Credentials,
-    config::R2,
+    config::{Permission, R2},
     Error, Result,
 };
 
@@ -110,10 +111,183 @@ fn token_id(account_id: &str, token: &Secret) -> Result<String> {
     Err(last.expect("two attempts were made"))
 }
 
+fn propagation_delay() -> Duration {
+    #[cfg(feature = "test-store")]
+    if let Some(ms) = std::env::var("CF_VAULT_RETRY_DELAY_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        return Duration::from_millis(ms);
+    }
+    Duration::from_secs(2)
+}
+
+/// How many times a freshly minted token is tried before giving up: a new token needs a few
+/// seconds before the API accepts it.
+const PROPAGATION_ATTEMPTS: u32 = 8;
+
+#[derive(Deserialize)]
+struct PermissionGroup {
+    id: String,
+    name: String,
+}
+
+#[derive(Deserialize)]
+struct Minted {
+    id: String,
+    value: String,
+}
+
+/// Sends a JSON request and returns the status and body text.
+fn send(
+    token: &Secret,
+    method: oauth2::reqwest::Method,
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> Result<(u16, String)> {
+    let http = http_client()?;
+    let mut request = http
+        .request(method, format!("{}{path}", api_base()))
+        .bearer_auth(token.expose());
+    if let Some(body) = body {
+        request = request
+            .header("Content-Type", "application/json")
+            .body(body.to_string());
+    }
+    let response = request
+        .send()
+        .map_err(|_| Error::R2("could not reach the Cloudflare API".into()))?;
+    let status = response.status().as_u16();
+    let text = response
+        .text()
+        .map_err(|_| Error::R2("could not read the Cloudflare API's answer".into()))?;
+    Ok((status, text))
+}
+
+/// Derives temporary credentials for the profile's bucket from an OAuth session (or any token
+/// that may create account API tokens): it mints a short-lived account token with the R2
+/// permission the credentials need, derives the credentials from it, and deletes it again.
+/// The session needs the `account-api-tokens.write` scope and the R2 permission it delegates
+/// (`workers-r2.write`, or `workers-r2.read` for read-only credentials).
+pub fn derive_minting(
+    account_id: &str,
+    token: &Secret,
+    r2: &R2,
+    ttl: Duration,
+) -> Result<R2Credentials> {
+    use oauth2::reqwest::Method;
+
+    let wanted = match r2.permission {
+        Permission::ObjectReadWrite => "Workers R2 Storage Write",
+        Permission::ObjectReadOnly => "Workers R2 Storage Read",
+    };
+    let (status, text) = send(
+        token,
+        Method::GET,
+        &format!("/accounts/{account_id}/tokens/permission_groups"),
+        None,
+    )?;
+    if !(200..300).contains(&status) {
+        return Err(failure(
+            "listing the token permission groups",
+            status,
+            &text,
+        ));
+    }
+    let groups: Envelope<Vec<PermissionGroup>> = serde_json::from_str(&text)
+        .map_err(|_| Error::R2("the Cloudflare API returned an unexpected response".into()))?;
+    let group = groups
+        .result
+        .unwrap_or_default()
+        .into_iter()
+        .find(|g| g.name == wanted)
+        .ok_or_else(|| {
+            Error::R2(format!(
+                "Cloudflare has no permission group named \"{wanted}\""
+            ))
+        })?;
+
+    let ttl_seconds = ttl.as_secs().max(1);
+    let expires_on = (OffsetDateTime::now_utc()
+        + time::Duration::seconds(ttl_seconds as i64 + 300))
+    .replace_nanosecond(0)
+    .ok()
+    .and_then(|t| {
+        t.format(&time::format_description::well_known::Rfc3339)
+            .ok()
+    })
+    .unwrap_or_default();
+    let (status, text) = send(
+        token,
+        Method::POST,
+        &format!("/accounts/{account_id}/tokens"),
+        Some(serde_json::json!({
+            "name": "cf-vault temporary R2 parent",
+            "expires_on": expires_on,
+            "policies": [{
+                "effect": "allow",
+                "resources": { format!("com.cloudflare.api.account.{account_id}"): "*" },
+                "permission_groups": [{ "id": group.id }],
+            }],
+        })),
+    )?;
+    if !(200..300).contains(&status) {
+        return Err(failure(
+            "creating the temporary API token (the session needs the account-api-tokens.write scope)",
+            status,
+            &text,
+        ));
+    }
+    let minted: Minted = serde_json::from_str::<Envelope<Minted>>(&text)
+        .ok()
+        .and_then(|e| e.result)
+        .ok_or_else(|| Error::R2("the Cloudflare API returned an unexpected response".into()))?;
+    let parent = Secret::new(minted.value);
+
+    let derived = (|| {
+        for attempt in 1..=PROPAGATION_ATTEMPTS {
+            match derive_from_parent(account_id, &parent, &minted.id, r2, ttl_seconds) {
+                // A token this new is refused for a moment
+                Err(Error::R2(m)) if m.contains("HTTP 401") && attempt < PROPAGATION_ATTEMPTS => {
+                    std::thread::sleep(propagation_delay());
+                }
+                other => return other,
+            }
+        }
+        unreachable!("the last attempt returns")
+    })();
+
+    // Whatever happened, the temporary token goes
+    let deleted = send(
+        token,
+        Method::DELETE,
+        &format!("/accounts/{account_id}/tokens/{}", minted.id),
+        None,
+    );
+    if !matches!(deleted, Ok((status, _)) if (200..300).contains(&status)) {
+        eprintln!(
+            "cf-vault: warning: the temporary API token \"cf-vault temporary R2 parent\" was not \
+             deleted; it expires by itself"
+        );
+    }
+    derived
+}
+
 /// Derives temporary credentials for the profile's bucket from `token`.
 pub fn derive(account_id: &str, token: &Secret, r2: &R2, ttl: Duration) -> Result<R2Credentials> {
     let parent = token_id(account_id, token)?;
-    let ttl_seconds = ttl.as_secs().max(1);
+    derive_from_parent(account_id, token, &parent, r2, ttl.as_secs().max(1))
+}
+
+/// Creates the temporary credentials, with `token` as the bearer and `parent` as the parent's
+/// access key id.
+fn derive_from_parent(
+    account_id: &str,
+    token: &Secret,
+    parent: &str,
+    r2: &R2,
+    ttl_seconds: u64,
+) -> Result<R2Credentials> {
     let mut body = serde_json::json!({
         "bucket": r2.bucket,
         "parentAccessKeyId": parent,
@@ -123,21 +297,12 @@ pub fn derive(account_id: &str, token: &Secret, r2: &R2, ttl: Duration) -> Resul
     if !r2.prefixes.is_empty() {
         body["prefixes"] = serde_json::json!(r2.prefixes);
     }
-    let http = http_client()?;
-    let response = http
-        .post(format!(
-            "{}/accounts/{account_id}/r2/temp-access-credentials",
-            api_base()
-        ))
-        .bearer_auth(token.expose())
-        .header("Content-Type", "application/json")
-        .body(body.to_string())
-        .send()
-        .map_err(|_| Error::R2("could not reach the Cloudflare API".into()))?;
-    let status = response.status().as_u16();
-    let text = response
-        .text()
-        .map_err(|_| Error::R2("could not read the Cloudflare API's answer".into()))?;
+    let (status, text) = send(
+        token,
+        oauth2::reqwest::Method::POST,
+        &format!("/accounts/{account_id}/r2/temp-access-credentials"),
+        Some(body),
+    )?;
     if !(200..300).contains(&status) {
         return Err(failure("creating the temporary credentials", status, &text));
     }

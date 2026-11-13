@@ -102,7 +102,7 @@ pub struct Profile {
     pub account_id: String,
     /// How the profile authenticates.
     pub kind: Kind,
-    /// Temporary R2 credentials, for api_token profiles.
+    /// Temporary R2 credentials, for profiles without a broker.
     pub r2: Option<R2>,
 }
 
@@ -433,11 +433,6 @@ fn parse_profile(name: &str, table: &Table, p: &mut Problems<'_>) -> Option<Prof
     if let (Some(Kind::OAuth2(oauth)), Some(_)) = (&kind, &r2) {
         if oauth.exchange.is_some() {
             p.add("\"r2\" is not allowed together with \"exchange\" (the broker profile decides)");
-        } else {
-            p.add(
-                "\"r2\" is only supported for type = \"api_token\" profiles (direct R2 credentials \
-                 need a static-token parent)",
-            );
         }
     }
 
@@ -668,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    fn r2_is_one_bucket_on_token_profiles_only() {
+    fn r2_is_one_bucket_and_never_with_a_broker() {
         let ok = Config::parse(
             "[a]\ntype=\"api_token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\npermission=\"object-read-only\"\nprefixes=[\"p/\"]\n",
         )
@@ -694,8 +689,9 @@ mod tests {
         assert!(e.contains("not a valid R2 bucket name"));
         let e = parse_err("[a]\ntype=\"api_token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\npermission=\"admin\"\n");
         assert!(e.contains("r2.permission"));
-        let e = parse_err("[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\n");
-        assert!(e.contains("only supported for type = \"api_token\""));
+        // An OAuth profile may name a bucket too: a token is minted as the parent
+        Config::parse("[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\n")
+            .unwrap();
         let e = parse_err(
             "[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\n\
              [a.oauth2.exchange]\nurl=\"https://b\"\nprofile=\"p\"\n",

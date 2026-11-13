@@ -28,7 +28,8 @@ cf-vault exec -p production -- terraform plan     # credentials exist only for t
 |----------|-----|------|
 | Team access with policy-scoped, short-lived tokens and R2 credentials | an `oauth2` profile with `exchange` at a [cloudflare-sts](https://github.com/cf-contrib/cloudflare-sts) broker | [Broker](docs/broker.md) |
 | Your own identity provider, or Cloudflare's own sign-in with your own client | an `oauth2` profile with `issuer` and `client_id` | [Cloudflare OAuth](docs/cloudflare-oauth.md) |
-| A plain API token kept in the keychain, optionally with temporary R2 credentials | an `api_token` profile | [R2](docs/r2.md) |
+| A plain API token kept in the keychain | an `api_token` profile | [Configuration](docs/configuration.md) |
+| Temporary R2 credentials, from a broker, an API token or Cloudflare's own OAuth | an `[r2]` table, or a broker bucket | [R2](docs/r2.md) |
 | CI, or a machine with no keychain | environment variables | [CI](docs/ci.md) |
 
 Every guide is in [docs/](docs/README.md).
@@ -106,7 +107,7 @@ ended it).
   its own.
 * **Credentials are not renewed while the command runs**; ask for a longer lifetime with `--ttl`.
 * **R2 credentials cannot be revoked early.**
-* **Cloudflare's own sign-in needs a client of your own** for now.
+* **Cloudflare's own sign-in needs a client of your own** for now, and R2 credentials from it need the `account-api-tokens.write` scope.
 
 The full list is in [docs/limitations.md](docs/limitations.md).
 

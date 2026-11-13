@@ -12,8 +12,10 @@
 * **Cloudflare's own sign-in needs a client of your own for now.** The zero-configuration profile
   needs a Cloudflare OAuth client registered for cf-vault, which does not exist yet; see
   [Cloudflare OAuth](cloudflare-oauth.md).
-* **Direct R2 needs a static API token.** An OAuth session cannot derive temporary R2 credentials
-  without a broker.
+* **Direct R2 from an OAuth session needs Cloudflare's own sign-in** with the
+  `account-api-tokens.write` scope: it mints a short-lived token as the parent. Another provider's
+  token (for example from Access) is not accepted by Cloudflare, so use a broker or an `api_token`
+  profile there.
 * **No plaintext fallback.** Without a usable keychain, `login` and any command that needs a stored
   session fail with a clear error. Supply credentials through the environment instead.
 * **The ID token's signature is not verified by cf-vault.** The token comes straight from the token
