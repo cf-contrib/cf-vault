@@ -146,7 +146,7 @@ fn the_sign_in_sends_a_nonce_and_a_matching_id_token_is_accepted() {
 #[test]
 fn an_id_token_that_fails_the_checks_is_refused_and_nothing_is_stored() {
     type Case = (&'static str, fn(&mut provider::State), &'static str);
-    let cases: [Case; 3] = [
+    let cases: [Case; 4] = [
         (
             "another issuer",
             |s| s.id_iss = Some("https://evil.example".into()),
@@ -157,7 +157,16 @@ fn an_id_token_that_fails_the_checks_is_refused_and_nothing_is_stored() {
             |s| s.id_aud = Some("someone-else".into()),
             "another client",
         ),
-        ("no nonce", |s| s.omit_nonce = true, "not for this sign-in"),
+        (
+            "no nonce",
+            |s| s.omit_nonce = true,
+            "does not carry the nonce",
+        ),
+        (
+            "another sign-in's nonce",
+            |s| s.wrong_nonce = true,
+            "not for this sign-in",
+        ),
     ];
     for (label, tweak, message) in cases {
         let provider = Provider::start();

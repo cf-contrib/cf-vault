@@ -282,6 +282,10 @@ struct IdClaims {
     exp: i64,
     #[serde(default)]
     nonce: Option<String>,
+    #[serde(default)]
+    azp: Option<String>,
+    #[serde(default)]
+    iat: Option<i64>,
 }
 
 /// Checks an ID token the provider just issued: it is from `issuer`, for `client_id`, not yet
@@ -305,21 +309,58 @@ pub fn check_id_token(
     if claims.iss.trim_end_matches('/') != issuer.trim_end_matches('/') {
         return Err("the provider's ID token is from another issuer".into());
     }
-    let for_client = match &claims.aud {
-        serde_json::Value::String(aud) => aud == client_id,
-        serde_json::Value::Array(auds) => auds.iter().any(|a| a.as_str() == Some(client_id)),
-        _ => false,
+    let (for_client, several) = match &claims.aud {
+        serde_json::Value::String(aud) => (aud == client_id, false),
+        serde_json::Value::Array(auds) => (
+            auds.iter().any(|a| a.as_str() == Some(client_id)),
+            auds.len() > 1,
+        ),
+        _ => (false, false),
     };
     if !for_client {
         return Err("the provider's ID token is for another client".into());
     }
+    // With several audiences, the token must say which client it was issued to
+    // (OpenID Connect Core 3.1.3.7, items 3 and 4)
+    if several && claims.azp.as_deref() != Some(client_id) {
+        return Err(
+            "the provider's ID token names several audiences but was not issued to this client \
+             (azp)"
+                .into(),
+        );
+    }
     if let Some(nonce) = nonce {
-        if claims.nonce.as_deref() != Some(nonce) {
-            return Err("the provider's ID token is not for this sign-in".into());
+        match claims.nonce.as_deref() {
+            Some(found) if found == nonce => {}
+            Some(_) => return Err("the provider's ID token is not for this sign-in".into()),
+            None => {
+                return Err(
+                    "the provider's ID token does not carry the nonce cf-vault sent; \
+                            the provider may not support nonces"
+                        .into(),
+                )
+            }
         }
     }
-    if claims.exp <= OffsetDateTime::now_utc().unix_timestamp() {
-        return Err("the provider's ID token has already expired".into());
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    if claims.exp <= now {
+        // A token that was only just issued should be dated about now: if it is not, the
+        // clock is the likely culprit
+        let skew = claims.iat.map(|iat| now - iat).unwrap_or(0);
+        return Err(if skew.abs() > 120 {
+            format!(
+                "the provider's ID token has already expired, and its issue time is {} minutes \
+                 {} by this machine's clock: check the system clock",
+                skew.abs() / 60,
+                if skew > 0 {
+                    "in the past"
+                } else {
+                    "in the future"
+                }
+            )
+        } else {
+            "the provider's ID token has already expired".into()
+        });
     }
     Ok(())
 }
@@ -385,11 +426,47 @@ mod tests {
         assert!(err(&good, "https://id.example", "other", None).contains("another client"));
         assert!(err(&good, "https://id.example", "c", Some("n2")).contains("this sign-in"));
         let array = jwt(&format!(
-            r#"{{"iss":"https://id.example","aud":["x","c"],"exp":{far}}}"#
+            r#"{{"iss":"https://id.example","aud":["x","c"],"azp":"c","exp":{far}}}"#
         ));
         check_id_token(&array, "https://id.example", "c", None).unwrap();
         let expired = jwt(r#"{"iss":"https://id.example","aud":"c","exp":1}"#);
         assert!(err(&expired, "https://id.example", "c", None).contains("expired"));
+        // Several audiences need an azp that names this client
+        let no_azp = jwt(&format!(
+            r#"{{"iss":"https://id.example","aud":["x","c"],"exp":{far}}}"#
+        ));
+        assert!(err(&no_azp, "https://id.example", "c", None).contains("azp"));
+        let bad_azp = jwt(&format!(
+            r#"{{"iss":"https://id.example","aud":["x","c"],"azp":"x","exp":{far}}}"#
+        ));
+        assert!(err(&bad_azp, "https://id.example", "c", None).contains("azp"));
+        let good_azp = jwt(&format!(
+            r#"{{"iss":"https://id.example","aud":["x","c"],"azp":"c","exp":{far}}}"#
+        ));
+        check_id_token(&good_azp, "https://id.example", "c", None).unwrap();
+        // One audience in an array needs no azp
+        let one = jwt(&format!(
+            r#"{{"iss":"https://id.example","aud":["c"],"exp":{far}}}"#
+        ));
+        check_id_token(&one, "https://id.example", "c", None).unwrap();
+        // A missing nonce says so, a wrong one says it is not for this sign-in
+        let no_nonce = jwt(&format!(
+            r#"{{"iss":"https://id.example","aud":"c","exp":{far}}}"#
+        ));
+        assert!(err(&no_nonce, "https://id.example", "c", Some("n1"))
+            .contains("does not carry the nonce"));
+        // An expired token dated far from now points at the clock
+        let now = OffsetDateTime::now_utc().unix_timestamp();
+        let skewed = jwt(&format!(
+            r#"{{"iss":"https://id.example","aud":"c","iat":{},"exp":{}}}"#,
+            now - 3600,
+            now - 3300
+        ));
+        let message = err(&skewed, "https://id.example", "c", None);
+        assert!(
+            message.contains("system clock") && message.contains("in the past"),
+            "{message}"
+        );
         assert!(err(&Secret::new("nope"), "https://id.example", "c", None).contains("not a JWT"));
     }
 

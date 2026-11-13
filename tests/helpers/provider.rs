@@ -62,6 +62,8 @@ pub struct State {
     pub id_aud: Option<String>,
     /// Leave the sign-in's nonce out of the ID token.
     pub omit_nonce: bool,
+    /// Put a different nonce in the ID token.
+    pub wrong_nonce: bool,
     issued: u32,
     challenges: HashMap<String, String>,
     nonces: HashMap<String, String>,
@@ -83,6 +85,7 @@ impl Provider {
             id_iss: None,
             id_aud: None,
             omit_nonce: false,
+            wrong_nonce: false,
             issued: 0,
             challenges: HashMap::new(),
             nonces: HashMap::new(),
@@ -135,6 +138,7 @@ fn token_json(
             .clone()
             .unwrap_or_else(|| CLIENT_ID.to_string());
         let nonce = match nonce {
+            Some(_) if state.wrong_nonce => ",\"nonce\":\"some-other-sign-in\"".to_string(),
             Some(nonce) if !state.omit_nonce => format!(",\"nonce\":\"{nonce}\""),
             _ => String::new(),
         };
