@@ -119,3 +119,53 @@ fn the_cloudflare_default_profile_explains_what_to_do_until_a_client_exists() {
     assert_eq!(out.code, Some(1));
     assert!(out.stderr.contains("oauth2.client_id") && out.stderr.contains("type = \"token\""));
 }
+
+fn broker_profile_config(provider: &Provider, port: u16) -> String {
+    // An exchange profile: an ID token is required, so it is checked and stored
+    format!(
+        "[personal]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
+         [personal.oauth2]\nissuer = \"{}\"\nclient_id = \"{}\"\nredirect_port = {port}\n\
+         [personal.oauth2.exchange]\nurl = \"https://broker.example\"\nprofile = \"p\"\n",
+        provider.url(),
+        provider::CLIENT_ID
+    )
+}
+
+#[test]
+fn the_sign_in_sends_a_nonce_and_a_matching_id_token_is_accepted() {
+    let provider = Provider::start();
+    let ws = Workspace::new(&broker_profile_config(&provider, free_port()));
+    let run = start_login(&ws, "personal");
+    assert!(run.url.contains("nonce="), "{}", run.url);
+    run.approve();
+    let out = run.finish();
+    assert!(out.success(), "{}", out.stderr);
+    assert!(ws.stored("personal").unwrap().contains("id_token"));
+}
+
+#[test]
+fn an_id_token_that_fails_the_checks_is_refused_and_nothing_is_stored() {
+    type Case = (&'static str, fn(&mut provider::State), &'static str);
+    let cases: [Case; 3] = [
+        (
+            "another issuer",
+            |s| s.id_iss = Some("https://evil.example".into()),
+            "another issuer",
+        ),
+        (
+            "another client",
+            |s| s.id_aud = Some("someone-else".into()),
+            "another client",
+        ),
+        ("no nonce", |s| s.omit_nonce = true, "not for this sign-in"),
+    ];
+    for (label, tweak, message) in cases {
+        let provider = Provider::start();
+        tweak(&mut provider.state.lock().unwrap());
+        let ws = Workspace::new(&broker_profile_config(&provider, free_port()));
+        let out = login(&ws, "personal");
+        assert_eq!(out.code, Some(1), "{label}: {}", out.stderr);
+        assert!(out.stderr.contains(message), "{label}: {}", out.stderr);
+        assert!(ws.stored("personal").is_none(), "{label}");
+    }
+}

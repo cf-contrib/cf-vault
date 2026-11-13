@@ -223,6 +223,15 @@ pub fn refresh_profile(
                 let resolved = resolve(profile, oauth).map_err(|e| refresh_error(e.to_string()))?;
                 let tokens = token::refresh(&resolved.provider, &resolved.client_id, &old)
                     .map_err(refresh_error)?;
+                if let Some(id_token) = &tokens.id_token {
+                    token::check_id_token(
+                        id_token,
+                        &resolved.provider.issuer,
+                        &resolved.client_id,
+                        None,
+                    )
+                    .map_err(refresh_error)?;
+                }
                 if oauth.exchange.is_some() && tokens.id_token.is_none() {
                     return Err(refresh_error(
                         "the provider issued no new ID token".to_string(),

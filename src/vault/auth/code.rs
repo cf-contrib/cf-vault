@@ -10,7 +10,7 @@ use std::{
 use oauth2::{url::Url, CsrfToken, PkceCodeChallenge};
 
 use crate::vault::{
-    auth::token::{exchange_code, Provider, TokenSet},
+    auth::token::{check_id_token, exchange_code, Provider, TokenSet},
     Error, Result,
 };
 
@@ -58,6 +58,7 @@ pub fn login(request: &Request<'_>) -> Result<TokenSet> {
 
     let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
     let state = CsrfToken::new_random();
+    let nonce = CsrfToken::new_random();
     let mut url = Url::parse(&request.provider.authorization_endpoint)
         .map_err(|_| Error::Auth("the authorization endpoint is not a URL".into()))?;
     {
@@ -67,6 +68,7 @@ pub fn login(request: &Request<'_>) -> Result<TokenSet> {
             .append_pair("client_id", request.client_id)
             .append_pair("redirect_uri", &redirect)
             .append_pair("state", state.secret())
+            .append_pair("nonce", nonce.secret())
             .append_pair("code_challenge", challenge.as_str())
             .append_pair("code_challenge_method", "S256");
         if !request.scopes.is_empty() {
@@ -84,13 +86,23 @@ pub fn login(request: &Request<'_>) -> Result<TokenSet> {
     eprintln!("Waiting for authorization...");
 
     let code = wait_for_callback(&listener, state.secret(), timeout())?;
-    exchange_code(
+    let tokens = exchange_code(
         request.provider,
         request.client_id,
         &redirect,
         &code,
         verifier.secret(),
-    )
+    )?;
+    if let Some(id_token) = &tokens.id_token {
+        check_id_token(
+            id_token,
+            &request.provider.issuer,
+            request.client_id,
+            Some(nonce.secret()),
+        )
+        .map_err(Error::Auth)?;
+    }
+    Ok(tokens)
 }
 
 fn respond(stream: &mut TcpStream, status: &str, body: &str) {

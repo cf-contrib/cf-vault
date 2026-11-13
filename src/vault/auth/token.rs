@@ -271,6 +271,59 @@ fn base64url_decode(input: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
+/// The claims of an ID token that a client checks (OpenID Connect Core 3.1.3.7).
+#[derive(Deserialize)]
+struct IdClaims {
+    #[serde(default)]
+    iss: String,
+    #[serde(default)]
+    aud: serde_json::Value,
+    #[serde(default)]
+    exp: i64,
+    #[serde(default)]
+    nonce: Option<String>,
+}
+
+/// Checks an ID token the provider just issued: it is from `issuer`, for `client_id`, not yet
+/// expired and, for a sign-in, for this sign-in (`nonce`). The signature is not checked: the
+/// token came straight from the token endpoint over TLS (OpenID Connect Core 3.1.3.7, item 6),
+/// and a broker verifies it again on every exchange.
+pub fn check_id_token(
+    token: &Secret,
+    issuer: &str,
+    client_id: &str,
+    nonce: Option<&str>,
+) -> std::result::Result<(), String> {
+    let payload = token
+        .expose()
+        .split('.')
+        .nth(1)
+        .and_then(base64url_decode)
+        .ok_or("the provider's ID token is not a JWT")?;
+    let claims: IdClaims = serde_json::from_slice(&payload)
+        .map_err(|_| "the provider's ID token has unreadable claims")?;
+    if claims.iss.trim_end_matches('/') != issuer.trim_end_matches('/') {
+        return Err("the provider's ID token is from another issuer".into());
+    }
+    let for_client = match &claims.aud {
+        serde_json::Value::String(aud) => aud == client_id,
+        serde_json::Value::Array(auds) => auds.iter().any(|a| a.as_str() == Some(client_id)),
+        _ => false,
+    };
+    if !for_client {
+        return Err("the provider's ID token is for another client".into());
+    }
+    if let Some(nonce) = nonce {
+        if claims.nonce.as_deref() != Some(nonce) {
+            return Err("the provider's ID token is not for this sign-in".into());
+        }
+    }
+    if claims.exp <= OffsetDateTime::now_utc().unix_timestamp() {
+        return Err("the provider's ID token has already expired".into());
+    }
+    Ok(())
+}
+
 /// Reads the `exp` claim of a JWT without verifying it (the broker verifies; this only decides
 /// when to refresh).
 pub fn jwt_expiry(token: &Secret) -> Option<OffsetDateTime> {
@@ -291,6 +344,53 @@ mod tests {
         let token = Secret::new("eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.sig");
         assert_eq!(jwt_expiry(&token).unwrap().unix_timestamp(), 4_102_444_800);
         assert!(jwt_expiry(&Secret::new("not-a-jwt")).is_none());
+    }
+
+    fn jwt(claims: &str) -> Secret {
+        let encode = |bytes: &[u8]| {
+            const A: &[u8; 64] =
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+            let mut out = String::new();
+            for chunk in bytes.chunks(3) {
+                let n = chunk
+                    .iter()
+                    .enumerate()
+                    .fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
+                for i in 0..=chunk.len() {
+                    out.push(A[((n >> (18 - 6 * i)) & 63) as usize] as char);
+                }
+            }
+            out
+        };
+        Secret::new(format!(
+            "{}.{}.sig",
+            encode(b"{}"),
+            encode(claims.as_bytes())
+        ))
+    }
+
+    #[test]
+    fn id_token_checks() {
+        let far = OffsetDateTime::now_utc().unix_timestamp() + 3600;
+        let good = jwt(&format!(
+            r#"{{"iss":"https://id.example","aud":"c","exp":{far},"nonce":"n1"}}"#
+        ));
+        check_id_token(&good, "https://id.example", "c", Some("n1")).unwrap();
+        // A refreshed token has no nonce to match
+        check_id_token(&good, "https://id.example/", "c", None).unwrap();
+        let err = |token: &Secret, issuer, client, nonce| {
+            check_id_token(token, issuer, client, nonce).unwrap_err()
+        };
+        assert!(err(&good, "https://other.example", "c", None).contains("another issuer"));
+        assert!(err(&good, "https://id.example", "other", None).contains("another client"));
+        assert!(err(&good, "https://id.example", "c", Some("n2")).contains("this sign-in"));
+        let array = jwt(&format!(
+            r#"{{"iss":"https://id.example","aud":["x","c"],"exp":{far}}}"#
+        ));
+        check_id_token(&array, "https://id.example", "c", None).unwrap();
+        let expired = jwt(r#"{"iss":"https://id.example","aud":"c","exp":1}"#);
+        assert!(err(&expired, "https://id.example", "c", None).contains("expired"));
+        assert!(err(&Secret::new("nope"), "https://id.example", "c", None).contains("not a JWT"));
     }
 
     #[test]

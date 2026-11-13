@@ -269,6 +269,11 @@ shows each profile and its state and contains no credential material.
 - **FR-006**: `login -p <profile>` MUST authenticate the user by browser-based OAuth 2.0
   Authorization Code with PKCE and store the resulting session in the operating system's secure
   credential store.
+- **FR-006a**: When the identity provider returns an ID token, the tool MUST check, before storing
+  or using it, that it is from the expected issuer, for this client, not expired and, at sign-in,
+  for this sign-in (a `nonce` sent in the request and echoed in the token). A token that fails is
+  refused and nothing is stored. The signature is not checked by the tool; a broker verifies it on
+  every exchange.
 - **FR-007**: The tool MUST renew an expired OAuth session automatically when renewal is possible,
   and MUST otherwise instruct the user to log in again.
 - **FR-008**: For static-token profiles, `login` MUST read the token without echoing it and store
@@ -395,6 +400,7 @@ shows each profile and its state and contains no credential material.
 
 ## Assumptions
 
+- cf-vault is meant to replace the `cloudflare-sts` command-line client; the `cloudflare-sts` repository then keeps only the broker. There is no compatibility requirement with that client's flags or output.
 - Terraform's S3 backend is fed through an AWS `credential_process` helper such as
   `tf-contrib/terraform-cloudflare-backend`, which reads `CLOUDFLARE_R2_ACCESS_KEY_ID`,
   `CLOUDFLARE_R2_SECRET_ACCESS_KEY`, and `CLOUDFLARE_R2_SESSION_TOKEN` from its environment. That

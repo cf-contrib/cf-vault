@@ -28,14 +28,18 @@ pub fn base64url(bytes: &[u8]) -> String {
     out
 }
 
-/// A JWT-shaped fake with the given expiry (seconds since the epoch).
-pub fn fake_jwt(exp: i64, seed: &str) -> String {
-    let payload = format!("{{\"exp\":{exp},\"sub\":\"{seed}\"}}");
+/// A JWT-shaped fake with the given claims (JSON text).
+pub fn jwt_with(claims: &str) -> String {
     format!(
         "{}.{}.fakesig",
         base64url(b"{\"alg\":\"none\"}"),
-        base64url(payload.as_bytes())
+        base64url(claims.as_bytes())
     )
+}
+
+/// A JWT-shaped fake with the given expiry (seconds since the epoch).
+pub fn fake_jwt(exp: i64, seed: &str) -> String {
+    jwt_with(&format!("{{\"exp\":{exp},\"sub\":\"{seed}\"}}"))
 }
 
 pub fn now() -> i64 {
@@ -52,8 +56,15 @@ pub struct State {
     pub rotate_refresh: bool,
     pub refresh_fails: bool,
     pub issue_id_token: bool,
+    /// Put this in the ID token's `iss` instead of the provider's own issuer.
+    pub id_iss: Option<String>,
+    /// Put this in the ID token's `aud` instead of the client id.
+    pub id_aud: Option<String>,
+    /// Leave the sign-in's nonce out of the ID token.
+    pub omit_nonce: bool,
     issued: u32,
     challenges: HashMap<String, String>,
+    nonces: HashMap<String, String>,
 }
 
 pub struct Provider {
@@ -69,8 +80,12 @@ impl Provider {
             rotate_refresh: true,
             refresh_fails: false,
             issue_id_token: true,
+            id_iss: None,
+            id_aud: None,
+            omit_nonce: false,
             issued: 0,
             challenges: HashMap::new(),
+            nonces: HashMap::new(),
         }));
         let shared = state.clone();
         let server = Server::start(move |base| -> Handler {
@@ -94,7 +109,13 @@ impl Provider {
     }
 }
 
-fn token_json(state: &mut State, rotated: bool, previous: Option<&str>) -> Response {
+fn token_json(
+    base: &str,
+    state: &mut State,
+    rotated: bool,
+    previous: Option<&str>,
+    nonce: Option<&str>,
+) -> Response {
     state.issued += 1;
     let n = state.issued;
     let refresh = if rotated {
@@ -108,10 +129,20 @@ fn token_json(state: &mut State, rotated: bool, previous: Option<&str>) -> Respo
         state.access_lifetime
     );
     if state.issue_id_token {
-        body.push_str(&format!(
-            ",\"id_token\":\"{}\"",
-            fake_jwt(now() + state.id_lifetime, &format!("id{n}"))
-        ));
+        let iss = state.id_iss.clone().unwrap_or_else(|| base.to_string());
+        let aud = state
+            .id_aud
+            .clone()
+            .unwrap_or_else(|| CLIENT_ID.to_string());
+        let nonce = match nonce {
+            Some(nonce) if !state.omit_nonce => format!(",\"nonce\":\"{nonce}\""),
+            _ => String::new(),
+        };
+        let claims = format!(
+            "{{\"iss\":\"{iss}\",\"aud\":\"{aud}\",\"sub\":\"id{n}\",\"exp\":{}{nonce}}}",
+            now() + state.id_lifetime
+        );
+        body.push_str(&format!(",\"id_token\":\"{}\"", jwt_with(&claims)));
     }
     body.push('}');
     Response::json(200, body)
@@ -136,10 +167,17 @@ fn handle(base: &str, state: &Arc<Mutex<State>>, request: &Request) -> Response 
             if q.get("code_challenge_method").map(String::as_str) != Some("S256") {
                 return Response::json(400, "{\"error\":\"invalid_request\"}");
             }
-            state.lock().unwrap().challenges.insert(
-                "FAKE_CODE".to_string(),
-                q.get("code_challenge").cloned().unwrap_or_default(),
-            );
+            {
+                let mut state = state.lock().unwrap();
+                state.challenges.insert(
+                    "FAKE_CODE".to_string(),
+                    q.get("code_challenge").cloned().unwrap_or_default(),
+                );
+                state.nonces.insert(
+                    "FAKE_CODE".to_string(),
+                    q.get("nonce").cloned().unwrap_or_default(),
+                );
+            }
             let location = format!("{redirect}?code=FAKE_CODE&state={state_param}");
             Response::redirect(&location)
         }
@@ -159,9 +197,8 @@ fn handle(base: &str, state: &Arc<Mutex<State>>, request: &Request) -> Response 
                             "{\"error\":\"invalid_grant\",\"error_description\":\"bad code or verifier\"}",
                         );
                     }
-                    let rotate = state.rotate_refresh;
-                    let _ = rotate;
-                    token_json(&mut state, true, None)
+                    let nonce = state.nonces.get("FAKE_CODE").cloned();
+                    token_json(base, &mut state, true, None, nonce.as_deref())
                 }
                 Some("refresh_token") => {
                     if state.refresh_fails {
@@ -172,7 +209,7 @@ fn handle(base: &str, state: &Arc<Mutex<State>>, request: &Request) -> Response 
                     }
                     let previous = form.get("refresh_token").cloned();
                     let rotate = state.rotate_refresh;
-                    token_json(&mut state, rotate, previous.as_deref())
+                    token_json(base, &mut state, rotate, previous.as_deref(), None)
                 }
                 _ => Response::json(400, "{\"error\":\"unsupported_grant_type\"}"),
             }
