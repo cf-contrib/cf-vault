@@ -1,92 +1,58 @@
 # cf-vault
 
-Manage Cloudflare credentials from the command line: sign in once, keep the session in your
-system keychain, and run any command with short-lived credentials in its environment only.
-Inspired by [aws-vault](https://github.com/99designs/aws-vault) and
+[![CI](https://github.com/cf-contrib/cf-vault/actions/workflows/ci.yml/badge.svg)](https://github.com/cf-contrib/cf-vault/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/cf-contrib/cf-vault)](https://github.com/cf-contrib/cf-vault/releases/latest)
+[![Rust](https://img.shields.io/badge/Rust-1.95-DEA584?logo=rust&logoColor=white)](rust-toolchain.toml)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey)](#install)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Manage Cloudflare credentials without keeping them in shell profiles, dotfiles or CI variables.
+cf-vault signs you in, keeps the session in your system keychain, and runs a command with
+short-lived Cloudflare credentials in its environment for that command only. It is inspired by
+[aws-vault](https://github.com/99designs/aws-vault) and
 [nix-vault](https://github.com/nixos-contrib/nix-vault).
 
-```sh
-cf-vault login -p production
-cf-vault exec -p production -- terraform plan
+```bash
+cf-vault login -p production                      # once: browser sign-in
+cf-vault exec -p production -- terraform plan     # credentials exist only for this command
 ```
 
-- **OAuth 2.0 sign-in** (Authorization Code with PKCE) in your browser, automatic refresh, session in
-  the macOS Keychain or the Linux Secret Service.
-- **Static API tokens** as an alternative, stored the same way.
-- **Token exchange** (RFC 8693) at an optional broker such as
-  [`cf-contrib/cloudflare-sts`](https://github.com/cf-contrib/cloudflare-sts): short-lived,
-  policy-scoped API tokens and R2 credentials, released again when the command exits.
-- **Temporary R2 credentials** for one bucket, derived from a stored API token when there is no
-  broker.
-- **CI/CD** without a browser or keychain, using credentials from the environment.
+```text
+ login ──► your keychain (once)
+ exec  ──► short-lived credentials ──► your command (terraform, wrangler, ...) ──► released when it ends
+```
 
-macOS and Linux. There is no server, daemon or database; the secret never leaves your machine
-except to talk to Cloudflare, your identity provider and your broker.
+## Pick your setup
+
+| You want | Use | Read |
+|----------|-----|------|
+| Team access with policy-scoped, short-lived tokens and R2 credentials | an `oauth2` profile with `exchange` at a [cloudflare-sts](https://github.com/cf-contrib/cloudflare-sts) broker | [Broker](docs/broker.md) |
+| Your own identity provider, or Cloudflare's own sign-in with your own client | an `oauth2` profile with `issuer` and `client_id` | [Cloudflare OAuth](docs/cloudflare-oauth.md) |
+| A plain API token kept in the keychain, optionally with temporary R2 credentials | a `token` profile | [R2](docs/r2.md) |
+| CI, or a machine with no keychain | environment variables | [CI](docs/ci.md) |
+
+Every guide is in [docs/](docs/README.md).
 
 ## Install
 
-```sh
-nix profile install github:cf-contrib/cf-vault
-# or, from a checkout
-cargo install --path .
+```bash
+nix run github:cf-contrib/cf-vault -- --help      # or: nix profile install github:cf-contrib/cf-vault
+cargo binstall cf-vault                           # prebuilt binary from the GitHub release
+cargo install cf-vault
 ```
 
-## Commands
-
-| Command | |
-|---|---|
-| `cf-vault login -p NAME [--no-browser]` | Signs in (OAuth profile) or asks for a hidden API token (token profile) and stores the session. The old session is replaced only after the new sign-in succeeds. |
-| `cf-vault logout -p NAME` | Deletes the stored session; the refresh token is revoked at the provider on a best-effort basis. |
-| `cf-vault list [--json]` | Profiles, type, account and session state (`signed in`, `expired`, `not signed in`, `static token`). Never shows a secret. |
-| `cf-vault exec -p NAME [--ttl 10m] -- COMMAND…` | Runs the command with credentials in its environment. Expiring sessions are renewed first; the command is not started when credentials cannot be obtained. |
-
-The profile is given with `-p`/`--profile`, exactly once, or with `CF_VAULT_PROFILE` (the flag
-wins). Other settings: `--config` / `CF_VAULT_CONFIG` (default `~/.config/cf-vault/config.toml`),
-`--state-dir` / `CF_VAULT_STATE_DIR` (lock files only), `-q`, `-v`.
-
-What each command reads, writes and runs:
-
-| Command | Reads | Writes | Runs / contacts |
-|---|---|---|---|
-| `login` | config, the profile's session | the profile's session | your browser; a loopback listener while signing in; the identity provider |
-| `logout` | config, the profile's session | deletes the session | the provider's revocation endpoint |
-| `list` | config, sessions (expiry only) | nothing | nothing |
-| `exec` | config, the profile's session, `CF_VAULT_ID_TOKEN`, `CLOUDFLARE_API_TOKEN` | the session, only after a refresh; empty lock files | your command; the provider (refresh), the broker, the Cloudflare API (R2) |
-
-### What the command receives
-
-| Variable | When |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | always, except for a broker profile that issues only R2 credentials |
-| `CLOUDFLARE_ACCOUNT_ID` | always (the profile's account) |
-| `CLOUDFLARE_R2_ACCESS_KEY_ID`, `…_SECRET_ACCESS_KEY`, `…_SESSION_TOKEN`, `…_ENDPOINT`, `…_BUCKET` | only when R2 credentials are issued |
-
-Inherited `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_R2_*` that the profile does not grant are removed
-from the command's environment. **`AWS_*` variables are never set, changed or removed.** For
-Terraform's S3 backend, point an AWS `credential_process` at a helper that reads `CLOUDFLARE_R2_*`,
-such as [`tf-contrib/terraform-cloudflare-backend`](https://github.com/tf-contrib/terraform-cloudflare-backend).
-
-In an interactive session an inherited `CLOUDFLARE_API_TOKEN` is replaced by the profile's, with a
-one-line notice on stderr that never shows the value.
+Supported: macOS and Linux. On Linux the session goes to the Secret Service (for example
+gnome-keyring or KeePassXC), so one must be running in your session. cf-vault never falls back to
+another store: without a usable keychain, `login` fails. A machine without one uses environment
+variables: see [CI](docs/ci.md).
 
 ## Configuration
 
-Every top-level table is a profile named after the table. **No secrets belong in this file**; a
-key such as `token`, `secret`, `password` or `refresh_*` is rejected. See
-[`config.example.toml`](config.example.toml).
+Profiles live in `~/.config/cf-vault/config.toml` (or `$XDG_CONFIG_HOME/cf-vault/config.toml`, or
+the file named by `--config` / `CF_VAULT_CONFIG`). Each top-level table is a profile with an
+`account_id` and a `type`: `oauth2` or `token`.
 
 ```toml
-# Static API token, with temporary R2 credentials for one bucket
-[ci-state]
-type = "token"
-account_id = "abc123"
-
-[ci-state.r2]
-bucket = "org-terraform-state"       # exactly one; use one profile per bucket
-permission = "object-read-write"     # or "object-read-only"
-prefixes = ["github.com/example-org/app/"]
-
-# Federated sign-in: the identity provider is discovered from the broker
 [production]
 type = "oauth2"
 account_id = "xyz789"
@@ -94,104 +60,70 @@ account_id = "xyz789"
 [production.oauth2.exchange]
 url = "https://cloudflare-sts-api.example.com"
 profile = "infra-admins:tofu-plan"
-# provider = "com.cloudflare.access"  # only when the broker lists several
 
-# Your own provider (a public client with PKCE; redirect http://127.0.0.1:8250/callback)
-[staging]
-type = "oauth2"
-account_id = "xyz789"
+[ci-state]
+type = "token"
+account_id = "abc123"
 
-[staging.oauth2]
-issuer = "https://identity.example.com"
-client_id = "client-id"
-# redirect_port = 8250
+[ci-state.r2]
+bucket = "org-terraform-state"
 ```
 
-How an OAuth profile resolves:
+The file never holds tokens or secrets, and the whole file is validated before any command runs.
+Every key is in [Configuration](docs/configuration.md); a full example is
+[`config.example.toml`](config.example.toml).
 
-| `oauth2.issuer` + `client_id` | `oauth2.exchange` | Behaviour |
-|---|---|---|
-| absent | absent | Cloudflare's own sign-in with cf-vault's registered client (**not available yet**, see below) |
-| absent | present | provider and client discovered from the broker; the ID token is exchanged |
-| present | absent | your provider; its access token is delivered as is (nothing assumes Cloudflare accepts it) |
-| present | present | your provider; its ID token is exchanged at the broker |
+## Commands
 
-`r2` is valid on `type = "token"` profiles only (an OAuth session has no parent access key), and
-never together with `exchange` (the broker profile decides what is issued).
-
-### Cloudflare Access for SaaS as the provider
-
-An Access for SaaS OIDC app (a public client with PKCE; redirect `http://127.0.0.1:8250/callback`)
-works as an identity provider, for example to feed a `cloudflare-sts` broker. Its ID token lasts 5
-minutes, and Access accepts the `offline_access` scope without listing it in its metadata, so ask
-for it explicitly to get a refresh token:
-
-```toml
-[access.oauth2]
-issuer = "https://<team>.cloudflareaccess.com/cdn-cgi/access/sso/oidc/<client id>"
-client_id = "<client id>"
-scopes = ["openid", "email", "offline_access"]
+```text
+cf-vault login  -p <name> [--no-browser]                 sign in, or store an API token
+cf-vault exec   -p <name> [--ttl 10m] -- <command> ...   run a command with the credentials
+cf-vault logout -p <name>                                remove the stored session
+cf-vault list   [--json]                                 profiles and session state
 ```
 
-Access has no revocation endpoint, so `logout` removes the local session only. An Access
-`access_token` is not a Cloudflare API token: use such a profile with `exchange` (or only for the
-ID token).
+* **`-p`/`--profile`** names the profile, exactly once; `CF_VAULT_PROFILE` is the default.
+* **login** runs the browser sign-in (authorization code with PKCE) for `oauth2` profiles and asks
+  for a hidden API token for `token` profiles. The old session is replaced only after the new
+  sign-in succeeds.
+* **exec** renews an expiring session first, never starts the command when credentials cannot be
+  obtained, and releases a broker-issued token when the command ends. The command receives
+  `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and, when R2 credentials are issued,
+  `CLOUDFLARE_R2_ACCESS_KEY_ID`, `…_SECRET_ACCESS_KEY`, `…_SESSION_TOKEN`, `…_ENDPOINT` and
+  `…_BUCKET`. Inherited `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_R2_*` the profile does not grant are
+  removed; `AWS_*` is never touched.
+* **logout** removes the local session. The refresh token is revoked at the provider where it has a
+  revocation endpoint.
+* **list** never shows a secret.
 
-## CI/CD
+Exit statuses: `0` success; `1` failure before the command started; `2` usage error; `126`/`127`
+command not executable / not found; otherwise the command's own status (`128+n` when signal `n`
+ended it).
 
-Without a terminal (standard input is not a terminal) nothing is prompted, stored or read from the
-keychain:
+## Limitations
 
-- any profile **without** `exchange` takes its token from `CLOUDFLARE_API_TOKEN`, delivered as is;
-- a profile **with** `exchange` takes an identity token from `CF_VAULT_ID_TOKEN` and exchanges it;
-  `CLOUDFLARE_API_TOKEN` is not a substitute;
-- with nothing supplied, `exec` fails at once and never waits for input.
+* **Cleanup is best effort** after `SIGKILL`: a broker token is then not released and expires on
+  its own.
+* **Credentials are not renewed while the command runs**; ask for a longer lifetime with `--ttl`.
+* **R2 credentials cannot be revoked early.**
+* **Cloudflare's own sign-in needs a client of your own** for now.
 
-```sh
-CF_VAULT_ID_TOKEN="$ACTIONS_ID_TOKEN" cf-vault exec -p production -- terraform apply
-```
-
-## Known limitations
-
-- **Forced termination.** `SIGKILL` cannot be caught, so a broker token is not released if cf-vault
-  is killed that way; it expires on its own. Keep lifetimes short.
-- **Long-running commands.** Credentials are obtained before the command starts and are not renewed
-  while it runs. A broker token or R2 credentials can expire under a long command; `--ttl` asks for
-  a longer lifetime (the broker caps it at the profile's maximum). Directly derived R2 credentials
-  last 15 minutes unless `--ttl` is given.
-- **R2 credentials cannot be revoked early.** They expire. A `credential_process` helper does not
-  pass the expiry on, so a run longer than the credentials' lifetime can fail to save Terraform
-  state.
-- **Cloudflare's own sign-in is not available yet.** The zero-configuration `type = "oauth2"` profile
-  needs a Cloudflare OAuth client registered for cf-vault; until then it fails with a message that
-  names the alternatives (your own `issuer` and `client_id`, a token profile, or a broker). Whether a
-  Cloudflare OAuth access token can be used as an API bearer token, and which scopes it needs, is
-  still to be confirmed against a live account.
-- **Direct R2 needs a static token.** An OAuth session cannot derive temporary R2 credentials without
-  a broker.
-- **No plaintext fallback.** Without a usable keychain (for example a headless Linux host without a
-  Secret Service), `login` and any command that needs a stored session fail with a clear error.
-  Supply credentials through the environment instead.
+The full list is in [docs/limitations.md](docs/limitations.md).
 
 ## Development
 
-```sh
-cargo test --features test-store     # unit and integration tests
-cargo clippy --all-targets --features test-store -- -D warnings
-nix build
-scripts/check-release-build.sh       # a release build must contain no test-only hooks
+```bash
+nix develop                                                         # pinned Rust toolchain
+cargo fmt --check && cargo clippy --all-targets --features test-store -- -D warnings
+cargo test --features test-store                                    # unit + integration tests
+cargo test -- --ignored keyring_smoke                               # real keychain round trip (manual)
 ```
 
 The integration tests drive the real binary against loopback mock servers (an OIDC provider, a
 broker and the Cloudflare API) with fake credentials only. They need the **`test-store`** cargo
-feature, which adds test hooks (a file-backed credential store, a forced-interactive switch, an API
-URL override and shortened timeouts, all selected by `CF_VAULT_*` variables). It is never enabled by
-default or in releases, and `scripts/check-release-build.sh` fails if any hook is found in a
-release binary.
-
-`CLOUDFLARE_STS_OPENAPI=/path/to/stsv1.yaml cargo test --features test-store broker_contract`
-checks the fields cf-vault uses against the broker's compiled OpenAPI schema.
+feature, which adds test hooks selected by `CF_VAULT_*` variables. It is never enabled by default
+or in releases, and CI fails if a release binary contains any of them.
 
 ## License
 
-MIT, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+MIT, see [LICENSE](LICENSE).
