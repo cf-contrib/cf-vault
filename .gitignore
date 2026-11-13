@@ -20,3 +20,7 @@ result
 # direnv
 .direnv/
 .envrc.local
+
+# Spec Kit tooling, kept locally
+.specify/
+.claude/skills/speckit-*/
