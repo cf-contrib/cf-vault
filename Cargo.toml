@@ -1,0 +1,54 @@
+[package]
+name = "cf-vault"
+version = "0.1.0"
+edition = "2021"
+description = "Manage Cloudflare credentials: sign in, keep them in the system keychain, and run commands with them"
+license = "MIT"
+documentation = "https://github.com/cf-contrib/cf-vault"
+homepage = "https://github.com/cf-contrib/cf-vault"
+repository = "https://github.com/cf-contrib/cf-vault"
+
+# `cargo binstall cf-vault` downloads the binary attached to the GitHub release
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }"
+pkg-fmt = "bin"
+
+[features]
+# Test-only, never enabled by default or in releases: a file-backed credential store selected with
+# CF_VAULT_STORE_DIR, so integration tests can drive the binary without a real keychain.
+test-store = []
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env", "string"] }
+fd-lock = "4"
+libc = "0.2"
+# oauth2 5 pins reqwest 0.12; use its re-export so only one reqwest version is built
+oauth2 = { version = "5", default-features = false, features = ["reqwest-blocking", "rustls-tls"] }
+keyring-core = "1"
+rpassword = "7"
+secrecy = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+signal-hook = "0.4"
+time = { version = "0.3", features = ["formatting", "parsing", "serde-well-known", "macros"] }
+toml = { version = "1", features = ["preserve_order"] }
+webbrowser = "1"
+serde_path_to_error = "0.1.20"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+expectrl = "0.9"
+predicates = "3"
+tempfile = "3"
+sha2 = "0.11"
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
+required-features = ["test-store"]

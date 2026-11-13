@@ -1,0 +1,66 @@
+{
+  description = "cf-vault - manage Cloudflare credentials: sign in, keep them in the system keychain, and run commands with them";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs =
+    {
+      nixpkgs,
+      flake-utils,
+      rust-overlay,
+      ...
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ (import rust-overlay) ];
+        };
+        manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
+        rust-toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = rust-toolchain;
+          rustc = rust-toolchain;
+        };
+      in
+      {
+        packages.default = rustPlatform.buildRustPackage {
+          pname = manifest.name;
+          inherit (manifest) version;
+          cargoLock.lockFile = ./Cargo.lock;
+          src = pkgs.lib.cleanSource ./.;
+          # The tests need a writable HOME and loopback networking; CI runs them with
+          # `cargo test --features test-store` instead.
+          doCheck = false;
+          # Automatically ad-hoc signs binaries in $out/bin during fixup
+          nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+            pkgs.darwin.autoSignDarwinBinariesHook
+          ];
+          meta = with pkgs.lib; {
+            inherit (manifest) description;
+            inherit (manifest) homepage;
+            license = licenses.mit;
+            mainProgram = manifest.name;
+          };
+        };
+
+        devShells.default = pkgs.mkShell {
+          inherit (manifest) name;
+          packages = [
+            rust-toolchain
+            pkgs.pkg-config
+            pkgs.bashInteractive
+            pkgs.zsh
+          ];
+        };
+      }
+    );
+}

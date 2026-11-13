@@ -1,0 +1,5 @@
+cf-vault is bootstrapped from nix-vault (https://github.com/nixos-contrib/nix-vault, MIT, same
+author) and follows the repository conventions of keysafe (https://github.com/keysafe-dev/keysafe,
+MIT) and the exec workflow ideas of aws-vault (https://github.com/99designs/aws-vault and
+https://github.com/ByteNess/aws-vault, MIT). Code copied from nix-vault names its origin in the
+file header. No source code was copied from keysafe or aws-vault.

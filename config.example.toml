@@ -1,0 +1,26 @@
+# cf-vault configuration. Every top-level table is a profile named after the table.
+# No secrets belong in this file: use `cf-vault login -p <profile>`.
+
+# Cloudflare's own sign-in (available once cf-vault's Cloudflare OAuth client is registered).
+[personal]
+type = "oauth2"
+account_id = "abc123"
+
+# Federated sign-in: the identity provider is discovered from the broker.
+[production]
+type = "oauth2"
+account_id = "xyz789"
+
+[production.oauth2.exchange]
+url = "https://cloudflare-sts-api.example.com"
+profile = "infra-admins:tofu-plan"
+
+# Static API token, with temporary R2 credentials for one bucket.
+[ci-state]
+type = "token"
+account_id = "abc123"
+
+[ci-state.r2]
+bucket = "org-terraform-state"
+permission = "object-read-write"
+prefixes = ["github.com/example-org/app/"]
