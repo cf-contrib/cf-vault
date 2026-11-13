@@ -8,6 +8,10 @@ documentation = "https://github.com/cf-contrib/cf-vault"
 homepage = "https://github.com/cf-contrib/cf-vault"
 repository = "https://github.com/cf-contrib/cf-vault"
 
+# Files only the repository needs: CI, the Nix packaging and the pinned toolchain (a toolchain file
+# in the package would make `cargo install` fetch rustc 1.95.0 and its components)
+exclude = [".github/", "flake.nix", "flake.lock", "rust-toolchain.toml"]
+
 # `cargo binstall cf-vault` downloads the binary attached to the GitHub release
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }"
