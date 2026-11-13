@@ -312,3 +312,4 @@ Task: "logout command in src/app/logout.rs"
 - **T068 to T072** (live spikes S1 to S4 and the release gate) need a real Cloudflare account and a registered OAuth client and have not been run. Until they are, the zero-configuration `type = "oauth2"` profile fails with an explanatory message (`CLOUDFLARE_CLIENT_ID` is empty in `src/vault/auth/mod.rs`).
 - **Live check without an account (partial S4/R1)**: Cloudflare's public discovery document was read and cf-vault's discovery and authorization URL work against it (see `research.md` R1). Registering a client and everything after it still needs an account.
 - **Live sign-in against Cloudflare Access for SaaS** (not S1 to S4, which are about `dash.cloudflare.com`): login, keychain storage, `exec` and a rotating refresh all worked; see `research.md` R1.
+- **Live exchange against a deployed cloudflare-sts broker**: token and R2 credentials issued, usable (`tokens/verify` active), released on exit; see `research.md` R1.
