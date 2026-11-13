@@ -32,7 +32,7 @@ Single crate: `src/app/` (CLI wiring), `src/vault/` (domain), `tests/integration
 - [X] T001 Copy project scaffolding from NV into the repo root and rename `nix-vault` to `cf-vault`: `Cargo.toml`, `rust-toolchain.toml` (channel 1.95.0), `rustfmt.toml`, `flake.nix`, `flake.lock`, `LICENSE`, `NOTICE`, `CHANGELOG.md`, `scripts/`. Update package name, description ("Manage Cloudflare credentials: sign in, store them in the system keychain, and run commands with them"), repository/homepage URLs (`cf-contrib/cf-vault`), the `cargo binstall` block, and the flake description, cachix settings and `mainProgram`.
 - [X] T002 Edit dependencies in `Cargo.toml`: keep `clap`, `fd-lock`, `libc`, `oauth2` (reqwest-blocking, rustls-tls, using its re-exported `reqwest` for all HTTP), `keyring-core`, `rpassword`, `secrecy`, `serde`, `serde_json`, `serde_path_to_error`, `sha2`, `signal-hook`, `time`, `toml` (preserve_order), `webbrowser`, the macOS and Linux keyring store crates, and dev-dependencies `assert_cmd`, `expectrl`, `predicates`, `tempfile`; remove `age` and `tiny_http`. Add a non-default cargo feature `test-store` (see T014).
 - [X] T003 [P] Add `.gitignore` (`/target`, `/result`) and `config.example.toml` containing the three example profiles from `contracts/config.md` (no secrets).
-- [X] T004 Create the module skeleton as empty compiling modules per plan.md: `src/main.rs`, `src/app/{mod,args,login,logout,list,exec}.rs`, `src/vault/{mod,error,config,credentials}.rs`, `src/vault/auth/{mod,code,token,static_token,env,redact}.rs`, `src/vault/exchange/mod.rs`, `src/vault/r2/mod.rs`, `src/vault/store/{mod,keyring,locker}.rs`. `cargo build` must pass.
+- [X] T004 Create the module skeleton as empty compiling modules per plan.md: `src/main.rs`, `src/app/{mod,args,login,logout,list,exec}.rs`, `src/vault/{mod,error,config,credentials}.rs`, `src/vault/auth/{mod,code,token,prompt,env,redact}.rs`, `src/vault/exchange/mod.rs`, `src/vault/r2/mod.rs`, `src/vault/store/{mod,keyring,locker}.rs`. `cargo build` must pass.
 - [X] T005 [P] Copy and adapt the test harness from NV: `tests/integration.rs`, `tests/helpers/mod.rs`, `tests/helpers/oauth.rs` (scripted mock OAuth/OIDC provider on a loopback port), `tests/helpers/vault.rs` (temp config + isolated store + `assert_cmd` runner with `CF_VAULT_CONFIG`). Remove everything Nix-specific. `cargo test` must pass with zero tests.
 - [X] T006 [P] Verify `rustfmt` and `clippy` pass on the skeleton (`cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`) and `nix build` produces a `cf-vault` binary on the host platform.
 
@@ -136,7 +136,7 @@ Single crate: `src/app/` (CLI wiring), `src/vault/` (domain), `tests/integration
 
 ### Implementation for User Story 3
 
-- [X] T046 [P] [US3] Implement `src/vault/auth/static_token.rs` (adapt `NV/src/vault/auth/basic.rs`): hidden prompt with `rpassword`, trims and validates non-empty, never echoes or logs the value (depends on T010).
+- [X] T046 [P] [US3] Implement `src/vault/auth/prompt.rs` (adapt `NV/src/vault/auth/basic.rs`): hidden prompt with `rpassword`, trims and validates non-empty, never echoes or logs the value (depends on T010).
 - [X] T047 [US3] Extend `src/app/login.rs` for `type = "token"`: prompt, store a `Session` (kind `token`, no expiry), fail with a clear error when no secure store is available (Principle III) (depends on T013, T046).
 - [X] T048 [US3] Add the static-token path to `src/app/exec.rs`: read the stored session, build the `CredentialSet` with `api_token` and `account_id`, no network call (depends on T034, T047).
 

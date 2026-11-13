@@ -3,8 +3,8 @@
 
 pub mod code;
 pub mod env;
+pub mod prompt;
 pub mod redact;
-pub mod static_token;
 pub mod token;
 
 use std::path::Path;
@@ -295,7 +295,7 @@ pub fn login_token(
     profile: &Profile,
     store: &CredentialStore,
     state_dir: &Path,
-    prompt: &dyn static_token::Prompt,
+    prompt: &dyn prompt::Prompt,
 ) -> Result<()> {
     if !matches!(profile.kind, Kind::Token) {
         return Err(Error::usage(format!(

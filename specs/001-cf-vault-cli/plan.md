@@ -169,7 +169,7 @@ src/
     │   ├── mod.rs           # Credential state, login, refresh under lock
     │   ├── code.rs          # Authorization Code + PKCE, loopback redirect
     │   ├── token.rs         # Token set, discovery, HTTP client
-    │   ├── static_token.rs  # Hidden prompt for static API tokens
+    │   ├── prompt.rs        # Hidden prompt for static API tokens
     │   ├── env.rs           # CF_VAULT_ID_TOKEN / CLOUDFLARE_API_TOKEN input
     │   └── redact.rs        # Secret type
     ├── exchange/

@@ -13,7 +13,7 @@ use crate::{
     app::{
         args::*, exec::ExecCommand, list::ListCommand, login::LoginCommand, logout::LogoutCommand,
     },
-    vault::{auth::static_token::TerminalPrompt, config::Config, store::CredentialStore, Result},
+    vault::{auth::prompt::TerminalPrompt, config::Config, store::CredentialStore, Result},
 };
 
 fn main() -> ExitCode {

@@ -5,7 +5,7 @@ use std::io::IsTerminal;
 use crate::{
     app::{args::LoginCommandArgs, select},
     vault::{
-        auth::{self, static_token::Prompt},
+        auth::{self, prompt::Prompt},
         config::{Config, Kind},
         store::CredentialStore,
         Error, Result,
