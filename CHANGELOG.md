@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/cf-contrib/cf-vault/compare/v0.1.0...v0.1.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* keep CI, Nix and toolchain files out of the crate package ([1b9216a](https://github.com/cf-contrib/cf-vault/commit/1b9216ab21b74b76f05df4de10b1d40da2ff2731))
+
 ## 0.1.0 (2026-11-13)
 
 
