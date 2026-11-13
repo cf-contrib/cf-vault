@@ -119,6 +119,24 @@ How an OAuth profile resolves:
 `r2` is valid on `type = "token"` profiles only (an OAuth session has no parent access key), and
 never together with `exchange` (the broker profile decides what is issued).
 
+### Cloudflare Access for SaaS as the provider
+
+An Access for SaaS OIDC app (a public client with PKCE; redirect `http://127.0.0.1:8250/callback`)
+works as an identity provider, for example to feed a `cloudflare-sts` broker. Its ID token lasts 5
+minutes, and Access accepts the `offline_access` scope without listing it in its metadata, so ask
+for it explicitly to get a refresh token:
+
+```toml
+[access.oauth2]
+issuer = "https://<team>.cloudflareaccess.com/cdn-cgi/access/sso/oidc/<client id>"
+client_id = "<client id>"
+scopes = ["openid", "email", "offline_access"]
+```
+
+Access has no revocation endpoint, so `logout` removes the local session only. An Access
+`access_token` is not a Cloudflare API token: use such a profile with `exchange` (or only for the
+ID token).
+
 ## CI/CD
 
 Without a terminal (standard input is not a terminal) nothing is prompted, stored or read from the
