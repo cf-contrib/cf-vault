@@ -314,3 +314,4 @@ Task: "logout command in src/app/logout.rs"
 - **Live sign-in against Cloudflare Access for SaaS** (not S1 to S4, which are about `dash.cloudflare.com`): login, keychain storage, `exec` and a rotating refresh all worked; see `research.md` R1.
 - **Live exchange against a deployed cloudflare-sts broker**: token and R2 credentials issued, usable (`tokens/verify` active), released on exit; see `research.md` R1.
 - **Live `tofu plan` under `cf-vault exec`** (R2 state backend through a `credential_process` helper, Cloudflare provider with the brokered token): worked; the remaining errors were other providers' credentials, outside cf-vault.
+- **S2 partly answered** from the live OAuth scope catalog (scope ids for DNS, Zone, Workers, R2, Secrets Store, Access and API-token creation exist); the tests that need a registered client (S1, S3, S4 and the token-minting part of S2) are still open. See `research.md` R1.
