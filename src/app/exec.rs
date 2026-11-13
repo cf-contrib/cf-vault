@@ -16,10 +16,12 @@ use std::{
 use crate::{
     app::{args::ExecCommandArgs, say, select, show_time, warn},
     vault::{
-        auth::{self, env, redact::Secret},
+        auth::{self, env, redact::Secret, sts},
+        cloudflare::{
+            credentials::{CredentialSet, Revocation},
+            r2,
+        },
         config::{Config, Kind, Profile},
-        credentials::{CredentialSet, Revocation},
-        exchange, r2,
         store::{CredentialStore, SessionKind},
         Error, Result,
     },
@@ -211,8 +213,8 @@ fn exchange_credentials(
     id_token: &Secret,
     ttl: Option<&str>,
 ) -> Result<CredentialSet> {
-    let metadata = exchange::discover(&settings.url)?;
-    let issued = exchange::exchange(&metadata, id_token, &settings.profile, ttl)?;
+    let metadata = sts::discover(&settings.url)?;
+    let issued = sts::exchange(&metadata, id_token, &settings.profile, ttl)?;
     let revocation = issued.access_token.clone().map(|token| Revocation {
         endpoint: metadata.revocation_endpoint.clone(),
         token,
@@ -221,7 +223,7 @@ fn exchange_credentials(
         if account != &profile.account_id {
             // Release what was issued before refusing to use it
             if let Some(revocation) = &revocation {
-                let _ = exchange::revoke(&revocation.endpoint, &revocation.token);
+                let _ = sts::revoke(&revocation.endpoint, &revocation.token);
             }
             return Err(Error::Exchange(format!(
                 "the broker issued credentials for account {account}, but profile \"{}\" is \
@@ -271,7 +273,7 @@ fn release(credentials: &CredentialSet, quiet: bool) {
     let Some(revocation) = &credentials.revocation else {
         return;
     };
-    match exchange::revoke(&revocation.endpoint, &revocation.token) {
+    match sts::revoke(&revocation.endpoint, &revocation.token) {
         Ok(()) => {
             if !quiet {
                 let id = credentials
@@ -360,7 +362,7 @@ fn run_child(command: &[String], plan: &EnvPlan) -> Result<ExitStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vault::credentials::R2Credentials;
+    use crate::vault::cloudflare::credentials::R2Credentials;
 
     fn names(items: &[&str]) -> impl Iterator<Item = String> {
         items

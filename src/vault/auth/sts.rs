@@ -1,4 +1,4 @@
-//! The broker client: discovery, RFC 8693 token exchange and RFC 7009 revocation, exactly as
+//! The token broker client (the "STS"): discovery, RFC 8693 token exchange and RFC 7009 revocation, exactly as
 //! `contracts/broker.md` describes the `cloudflare-sts` API. Request and response bodies are never
 //! logged; errors carry the OAuth error code and description only.
 
@@ -9,8 +9,8 @@ use time::OffsetDateTime;
 
 use crate::vault::{
     auth::{redact::Secret, token::http_client},
+    cloudflare::credentials::R2Credentials,
     config::endpoint_allowed,
-    credentials::R2Credentials,
     Error, Result,
 };
 

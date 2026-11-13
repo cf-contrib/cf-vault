@@ -80,7 +80,7 @@ provider, broker, Cloudflare API).
 | IV. Secrets Never Leak | Pass | `Secret` (secrecy-based, redacting `Debug`/`Display`/serialization-to-output) reused from nix-vault; no HTTP bodies logged; tokens only via the child's environment. The macOS store uses the native Security framework, not the `security` CLI (V1 resolved by design; confirm in implementation). |
 | V. Isolated Credential Sessions | Pass | Credentials live only in the child's environment; no shell/tool config edits; broker token revoked on exit. |
 | VI. Respect User Configuration | Pass | Config is read-only for cf-vault; managed variables are replaced or removed, AWS variables never touched; conflicts (inherited token) reported. |
-| VII. Separated Responsibilities | Pass | `auth`, `store`, `exchange`, `r2`, `config`, and `app` are separate modules behind small traits (`SecretStore`, a broker client, a provider); none depends on another's internals. |
+| VII. Separated Responsibilities | Pass | `auth` (sign-in, refresh, the broker client `auth::sts`), `store`, `cloudflare` (credentials, R2), `config`, and `app` are separate modules behind small traits (`SecretStore`, a broker client, a provider); none depends on another's internals. |
 | VIII. Cross-Platform Support | Pass | macOS and Linux behind the `store` trait and the loopback listener; Linux without a Secret Service uses the noninteractive path. |
 | IX. Security-Focused Testing | Pass | Redaction, storage, lock, permission, and conflict tests following nix-vault's `redaction.rs` and `profile_changes.rs`; sentinel-secret scans; no real credentials. |
 | X. Honest Documentation | Pass | README states: cleanup after `SIGKILL`, renewal during long commands, R2 credentials not revocable, spike-dependent profile caveats. |
@@ -113,7 +113,7 @@ the files are copied once and then owned by cf-vault.
 Not reused: `src/vault/nix/*`, `auth/{device,process}.rs`, `store/file.rs`, `tests/integration/{nix_*,proxy,repo_and_cache}.rs`,
 `tests/helpers/fake_nix.rs`, and the `age` dependency.
 
-New code (no nix-vault equivalent): `exchange` (broker client), `r2` (temporary credentials),
+New code (no nix-vault equivalent): `auth::sts` (broker client), `cloudflare::r2` (temporary credentials),
 the environment mapping and removal rules, the inherited-token override notice, and the
 Cloudflare provider defaults.
 
@@ -171,11 +171,12 @@ src/
     │   ├── token.rs         # Token set, discovery, HTTP client
     │   ├── prompt.rs        # Hidden prompt for static API tokens
     │   ├── env.rs           # CF_VAULT_ID_TOKEN / CLOUDFLARE_API_TOKEN input
-    │   └── redact.rs        # Secret type
-    ├── exchange/
-    │   └── mod.rs           # Broker: discovery, token exchange, revoke
-    ├── r2/
-    │   └── mod.rs           # Temporary R2 credentials from a static-token parent
+    │   ├── redact.rs        # Secret type
+    │   └── sts.rs           # Broker (RFC 8693): discovery, token exchange, revoke
+    ├── cloudflare/
+    │   ├── mod.rs
+    │   ├── credentials.rs   # CredentialSet: what the command receives
+    │   └── r2.rs            # Temporary R2 credentials from a static-token parent
     └── store/
         ├── mod.rs           # SecretStore trait, Session
         ├── keyring.rs
@@ -199,7 +200,7 @@ mirroring nix-vault so changes can flow between the two projects. One module per
 3. **Static token path** (US3) to prove `exec` end to end: environment building and removal,
    `login`/`logout`/`list`.
 4. **OAuth sign-in** (US1): adapt `code.rs` and refresh/locking; fixed redirect port.
-5. **Broker** (US2): `exchange` client against the mock broker; revoke on exit.
+5. **Broker** (US2): `auth::sts` client against the mock broker; revoke on exit.
 6. **R2** (US4): `r2` module and the `CLOUDFLARE_R2_*` delivery.
 7. **Noninteractive** (US5) and README limitations.
 8. **Spikes S1–S4** run in parallel as soon as a registered client exists; they gate only the

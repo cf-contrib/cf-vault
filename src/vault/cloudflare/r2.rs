@@ -11,8 +11,8 @@ use time::OffsetDateTime;
 
 use crate::vault::{
     auth::{redact::Secret, token::http_client},
+    cloudflare::credentials::R2Credentials,
     config::R2,
-    credentials::R2Credentials,
     Error, Result,
 };
 

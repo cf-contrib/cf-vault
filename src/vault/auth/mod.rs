@@ -5,6 +5,7 @@ pub mod code;
 pub mod env;
 pub mod prompt;
 pub mod redact;
+pub mod sts;
 pub mod token;
 
 use std::path::Path;
@@ -17,7 +18,6 @@ use crate::vault::{
         token::{Provider, TokenSet},
     },
     config::{Kind, OAuth, Profile, ProviderSource},
-    exchange,
     store::{locker::with_profile_lock, CredentialStore, Session, SessionKind, SCHEMA},
     Error, Result,
 };
@@ -80,8 +80,8 @@ pub fn resolve(profile: &Profile, oauth: &OAuth) -> Result<Resolved> {
         }
         ProviderSource::Broker => {
             let exchange = oauth.exchange.as_ref().expect("broker source has exchange");
-            let metadata = exchange::discover(&exchange.url)?;
-            let idp = exchange::pick_provider(&metadata, exchange.provider.as_deref())?;
+            let metadata = sts::discover(&exchange.url)?;
+            let idp = sts::pick_provider(&metadata, exchange.provider.as_deref())?;
             (idp.issuer, idp.client_id)
         }
     };
