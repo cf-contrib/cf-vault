@@ -24,3 +24,4 @@ result
 # Spec Kit tooling, kept locally
 .specify/
 .claude/skills/speckit-*/
+specs/
