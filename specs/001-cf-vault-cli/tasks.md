@@ -313,3 +313,4 @@ Task: "logout command in src/app/logout.rs"
 - **Live check without an account (partial S4/R1)**: Cloudflare's public discovery document was read and cf-vault's discovery and authorization URL work against it (see `research.md` R1). Registering a client and everything after it still needs an account.
 - **Live sign-in against Cloudflare Access for SaaS** (not S1 to S4, which are about `dash.cloudflare.com`): login, keychain storage, `exec` and a rotating refresh all worked; see `research.md` R1.
 - **Live exchange against a deployed cloudflare-sts broker**: token and R2 credentials issued, usable (`tokens/verify` active), released on exit; see `research.md` R1.
+- **Live `tofu plan` under `cf-vault exec`** (R2 state backend through a `credential_process` helper, Cloudflare provider with the brokered token): worked; the remaining errors were other providers' credentials, outside cf-vault.
