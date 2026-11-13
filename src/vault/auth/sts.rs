@@ -9,7 +9,7 @@ use time::OffsetDateTime;
 
 use crate::vault::{
     auth::{redact::Secret, token::http_client},
-    cloudflare::credentials::R2Credentials,
+    cloudflare::creds::R2Credentials,
     config::endpoint_allowed,
     Error, Result,
 };

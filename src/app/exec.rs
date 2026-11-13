@@ -18,7 +18,7 @@ use crate::{
     vault::{
         auth::{self, env, redact::Secret, sts},
         cloudflare::{
-            credentials::{CredentialSet, Revocation},
+            creds::{CredentialSet, Revocation},
             r2,
         },
         config::{Config, Kind, Profile},
@@ -362,7 +362,7 @@ fn run_child(command: &[String], plan: &EnvPlan) -> Result<ExitStatus> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vault::cloudflare::credentials::R2Credentials;
+    use crate::vault::cloudflare::creds::R2Credentials;
 
     fn names(items: &[&str]) -> impl Iterator<Item = String> {
         items

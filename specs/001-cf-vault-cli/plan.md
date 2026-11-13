@@ -175,7 +175,7 @@ src/
     │   └── sts.rs           # Broker (RFC 8693): discovery, token exchange, revoke
     ├── cloudflare/
     │   ├── mod.rs
-    │   ├── credentials.rs   # CredentialSet: what the command receives
+    │   ├── creds.rs         # CredentialSet: what the command receives
     │   └── r2.rs            # Temporary R2 credentials from a static-token parent
     └── store/
         ├── mod.rs           # SecretStore trait, Session
