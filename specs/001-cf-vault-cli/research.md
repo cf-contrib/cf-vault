@@ -36,6 +36,8 @@ as **spikes** (S1–S4) with a fallback, so planning does not depend on unverifi
 - Wrangler's own client is Cloudflare-owned and "may use additional flows"; it MUST NOT be reused
   (per spec).
 
+**Confirmed from the public discovery document** (`GET https://dash.cloudflare.com/.well-known/openid-configuration`, no credentials, 2026-11-13): issuer `https://dash.cloudflare.com`; endpoints `/oauth2/auth`, `/oauth2/token`, `/oauth2/revoke`; `code_challenge_methods_supported` includes `S256`; `token_endpoint_auth_methods_supported` includes `none` (public clients); `grant_types_supported` includes `authorization_code` and `refresh_token`; `scopes_supported` is only `openid`, `offline_access`, `offline`, so API scopes come from the client's registration (spike S2). cf-vault's discovery accepts this document and builds a valid authorization URL with `scope=openid offline_access` (checked by running `login --no-browser` with an unregistered client id and not opening the URL).
+
 **Not documented (spikes)**
 
 - **S1**: Does an OAuth access token work as `Authorization: Bearer` against

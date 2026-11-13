@@ -310,3 +310,4 @@ Task: "logout command in src/app/logout.rs"
 - **Issuer scheme**: `endpoint_allowed` accepts `https`, or `http` on a loopback address (needed for local test servers; also harmless for loopback sign-in), so `oauth2.issuer` is "https or loopback http" rather than "https only".
 - **Config location**: `~/.config/cf-vault/config.toml` on macOS and Linux, as nix-vault, not `~/Library/Application Support`.
 - **T068 to T072** (live spikes S1 to S4 and the release gate) need a real Cloudflare account and a registered OAuth client and have not been run. Until they are, the zero-configuration `type = "oauth2"` profile fails with an explanatory message (`CLOUDFLARE_CLIENT_ID` is empty in `src/vault/auth/mod.rs`).
+- **Live check without an account (partial S4/R1)**: Cloudflare's public discovery document was read and cf-vault's discovery and authorization URL work against it (see `research.md` R1). Registering a client and everything after it still needs an account.
