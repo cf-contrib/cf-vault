@@ -117,7 +117,7 @@ fn the_cloudflare_default_profile_explains_what_to_do_until_a_client_exists() {
     let ws = Workspace::new("[personal]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n");
     let out = run(&ws, &["login", "-p", "personal", "--no-browser"]);
     assert_eq!(out.code, Some(1));
-    assert!(out.stderr.contains("oauth2.client_id") && out.stderr.contains("type = \"token\""));
+    assert!(out.stderr.contains("oauth2.client_id") && out.stderr.contains("type = \"api_token\""));
 }
 
 fn broker_profile_config(provider: &Provider, port: u16) -> String {

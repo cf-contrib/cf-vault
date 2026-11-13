@@ -4,7 +4,7 @@ use crate::helpers::{cloudflare::Cloudflare, *};
 
 fn config(extra: &str) -> String {
     format!(
-        "[ci-state]\ntype = \"token\"\naccount_id = \"abc123\"\n\
+        "[ci-state]\ntype = \"api_token\"\naccount_id = \"abc123\"\n\
          [ci-state.r2]\nbucket = \"tf-state\"\n{extra}"
     )
 }
@@ -110,7 +110,7 @@ fn a_denied_request_explains_the_missing_permission_and_starts_nothing() {
 #[test]
 fn a_profile_without_r2_makes_no_r2_request() {
     let cloudflare = Cloudflare::start();
-    let ws = Workspace::new("[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n")
+    let ws = Workspace::new("[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n")
         .with_env("CF_VAULT_API_URL", &cloudflare.api_url());
     ws.seed_token("ci", FAKE_TOKEN);
     let out = run_interactive(&ws, &["exec", "-p", "ci", "--", "env"]);

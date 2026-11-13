@@ -1,10 +1,10 @@
-//! `login` for token profiles: the prompt needs a terminal, so these run in a pty.
+//! `login` for api_token profiles: the prompt needs a terminal, so these run in a pty.
 
 use expectrl::{session::OsSession, Eof, Expect, Session};
 
 use crate::helpers::*;
 
-const CONFIG: &str = "[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n";
+const CONFIG: &str = "[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n";
 
 fn start(ws: &Workspace) -> OsSession {
     let mut cmd = ws.std_cmd();

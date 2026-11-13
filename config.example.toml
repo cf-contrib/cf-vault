@@ -17,7 +17,7 @@ profile = "infra-admins:tofu-plan"
 
 # Static API token, with temporary R2 credentials for one bucket.
 [ci-state]
-type = "token"
+type = "api_token"
 account_id = "abc123"
 
 [ci-state.r2]

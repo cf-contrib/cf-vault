@@ -10,7 +10,7 @@ fn exec_with_a_valid_session_adds_under_a_second() {
         eprintln!("skipped: CF_VAULT_SKIP_TIMING is set");
         return;
     }
-    let ws = Workspace::new("[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n");
+    let ws = Workspace::new("[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n");
     ws.seed_token("ci", FAKE_TOKEN);
     // Warm the filesystem cache, then measure
     assert!(run_interactive(&ws, &["exec", "-p", "ci", "-q", "--", "true"]).success());

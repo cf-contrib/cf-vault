@@ -16,7 +16,7 @@ fn broker_and_r2_secrets_never_reach_output_or_plain_files() {
         "[production]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
          [production.oauth2]\nredirect_port = {}\n\
          [production.oauth2.exchange]\nurl = \"{}\"\nprofile = \"p\"\n\
-         [ci-state]\ntype = \"token\"\naccount_id = \"abc123\"\n[ci-state.r2]\nbucket = \"tf-state\"\n",
+         [ci-state]\ntype = \"api_token\"\naccount_id = \"abc123\"\n[ci-state.r2]\nbucket = \"tf-state\"\n",
         free_port(),
         broker.url()
     ))

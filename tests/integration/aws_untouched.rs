@@ -35,8 +35,8 @@ const PRESET: &str =
 fn preset_aws_variables_reach_the_command_unchanged_with_and_without_r2() {
     let cloudflare = Cloudflare::start();
     let ws = Workspace::new(
-        "[plain]\ntype = \"token\"\naccount_id = \"abc123\"\n\
-         [withr2]\ntype = \"token\"\naccount_id = \"abc123\"\n[withr2.r2]\nbucket = \"tf-state\"\n",
+        "[plain]\ntype = \"api_token\"\naccount_id = \"abc123\"\n\
+         [withr2]\ntype = \"api_token\"\naccount_id = \"abc123\"\n[withr2.r2]\nbucket = \"tf-state\"\n",
     )
     .with_env("CF_VAULT_API_URL", &cloudflare.api_url());
     ws.seed_token("plain", FAKE_TOKEN);
@@ -49,7 +49,7 @@ fn preset_aws_variables_reach_the_command_unchanged_with_and_without_r2() {
 fn no_aws_variable_is_added_when_none_was_set() {
     let cloudflare = Cloudflare::start();
     let ws = Workspace::new(
-        "[withr2]\ntype = \"token\"\naccount_id = \"abc123\"\n[withr2.r2]\nbucket = \"tf-state\"\n",
+        "[withr2]\ntype = \"api_token\"\naccount_id = \"abc123\"\n[withr2.r2]\nbucket = \"tf-state\"\n",
     )
     .with_env("CF_VAULT_API_URL", &cloudflare.api_url());
     ws.seed_token("withr2", FAKE_TOKEN);
@@ -66,7 +66,8 @@ fn an_oauth_profile_with_an_r2_bucket_and_no_broker_is_rejected_at_load() {
     let out = run(&ws, &["list"]);
     assert_eq!(out.code, Some(1));
     assert!(
-        out.stderr.contains("only supported for type = \"token\""),
+        out.stderr
+            .contains("only supported for type = \"api_token\""),
         "{}",
         out.stderr
     );

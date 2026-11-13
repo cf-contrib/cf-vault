@@ -5,7 +5,7 @@ use crate::helpers::*;
 
 #[test]
 fn no_file_with_a_credential_is_left_behind_after_the_command_exits() {
-    let ws = Workspace::new("[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n");
+    let ws = Workspace::new("[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n");
     ws.seed_token("ci", SENTINEL);
     let before = ws.all_text_except_store();
     let out = run_interactive(&ws, &["exec", "-p", "ci", "-q", "--", "sh", "-c", "exit 0"]);
@@ -18,7 +18,7 @@ fn no_file_with_a_credential_is_left_behind_after_the_command_exits() {
 
 #[test]
 fn nothing_is_written_outside_the_workspace_by_a_noninteractive_run() {
-    let ws = Workspace::new("[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n")
+    let ws = Workspace::new("[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n")
         .with_env("CF_VAULT_STORE_UNAVAILABLE", "1");
     let out = ws
         .cmd()

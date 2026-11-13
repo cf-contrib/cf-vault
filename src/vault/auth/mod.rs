@@ -69,7 +69,7 @@ pub fn resolve(profile: &Profile, oauth: &OAuth) -> Result<Resolved> {
                 return Err(Error::config(format!(
                     "profile \"{}\" signs in with Cloudflare's own OAuth client, which is not \
                      available yet; set oauth2.issuer and oauth2.client_id to your own \
-                     registered client, or use a type = \"token\" profile",
+                     registered client, or use a type = \"api_token\" profile",
                     profile.name
                 )));
             }
@@ -113,7 +113,7 @@ pub fn state(profile: &Profile, stored: Option<&Session>, now: OffsetDateTime) -
         return CredentialState::Absent;
     };
     match (&profile.kind, stored.kind) {
-        (Kind::Token, SessionKind::Token) => CredentialState::Usable,
+        (Kind::ApiToken, SessionKind::Token) => CredentialState::Usable,
         (Kind::OAuth2(oauth), SessionKind::Oauth2) => {
             let expected = match oauth.provider_source() {
                 ProviderSource::Explicit { issuer, client_id } => {
@@ -299,16 +299,16 @@ pub fn login_oauth(
     })
 }
 
-/// Stores a static API token for a `type = "token"` profile.
+/// Stores a static API token for a `type = "api_token"` profile.
 pub fn login_token(
     profile: &Profile,
     store: &CredentialStore,
     state_dir: &Path,
     prompt: &dyn prompt::Prompt,
 ) -> Result<()> {
-    if !matches!(profile.kind, Kind::Token) {
+    if !matches!(profile.kind, Kind::ApiToken) {
         return Err(Error::usage(format!(
-            "profile \"{}\" is not a token profile",
+            "profile \"{}\" is not an api_token profile",
             profile.name
         )));
     }
@@ -326,7 +326,7 @@ mod tests {
 
     fn profiles() -> (Profile, Profile, Profile) {
         let config = Config::parse(
-            "[t]\ntype=\"token\"\naccount_id=\"a\"\n\
+            "[t]\ntype=\"api_token\"\naccount_id=\"a\"\n\
              [o]\ntype=\"oauth2\"\naccount_id=\"a\"\n[o.oauth2]\nissuer=\"https://id.example\"\nclient_id=\"c\"\n\
              [x]\ntype=\"oauth2\"\naccount_id=\"a\"\n[x.oauth2.exchange]\nurl=\"https://b.example\"\nprofile=\"p\"\n",
         )

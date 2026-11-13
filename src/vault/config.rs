@@ -32,7 +32,7 @@ const R2_KEYS: [&str; 3] = ["bucket", "permission", "prefixes"];
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// A static Cloudflare API token kept in the credential store.
-    Token,
+    ApiToken,
     /// OAuth 2.0 sign-in, optionally followed by a broker exchange.
     OAuth2(OAuth),
 }
@@ -102,7 +102,7 @@ pub struct Profile {
     pub account_id: String,
     /// How the profile authenticates.
     pub kind: Kind,
-    /// Temporary R2 credentials, for static-token profiles.
+    /// Temporary R2 credentials, for api_token profiles.
     pub r2: Option<R2>,
 }
 
@@ -111,7 +111,7 @@ impl Profile {
     pub fn exchange(&self) -> Option<&Exchange> {
         match &self.kind {
             Kind::OAuth2(oauth) => oauth.exchange.as_ref(),
-            Kind::Token => None,
+            Kind::ApiToken => None,
         }
     }
 }
@@ -396,11 +396,15 @@ fn parse_profile(name: &str, table: &Table, p: &mut Problems<'_>) -> Option<Prof
         p.add("\"account_id\" is required");
     }
     let is_token = match table.get("type") {
-        Some(Value::String(t)) if t == "token" => Some(true),
+        Some(Value::String(t)) if t == "api_token" => Some(true),
+        Some(Value::String(t)) if t == "token" => {
+            p.add("type \"token\" was renamed to \"api_token\"");
+            None
+        }
         Some(Value::String(t)) if t == "oauth2" => Some(false),
         Some(Value::String(t)) => {
             p.add(format!(
-                "unknown type \"{t}\"; expected \"oauth2\" or \"token\""
+                "unknown type \"{t}\"; expected \"oauth2\" or \"api_token\""
             ));
             None
         }
@@ -409,7 +413,7 @@ fn parse_profile(name: &str, table: &Table, p: &mut Problems<'_>) -> Option<Prof
             None
         }
         None => {
-            p.add("\"type\" is required (\"oauth2\" or \"token\")");
+            p.add("\"type\" is required (\"oauth2\" or \"api_token\")");
             None
         }
     };
@@ -420,7 +424,7 @@ fn parse_profile(name: &str, table: &Table, p: &mut Problems<'_>) -> Option<Prof
             p.add("an [oauth2] table is only valid for type = \"oauth2\"");
             None
         }
-        (Some(true), None) => Some(Kind::Token),
+        (Some(true), None) => Some(Kind::ApiToken),
         (Some(false), table) => Some(Kind::OAuth2(parse_oauth(table, p))),
         (None, _) => None,
     };
@@ -431,7 +435,7 @@ fn parse_profile(name: &str, table: &Table, p: &mut Problems<'_>) -> Option<Prof
             p.add("\"r2\" is not allowed together with \"exchange\" (the broker profile decides)");
         } else {
             p.add(
-                "\"r2\" is only supported for type = \"token\" profiles (direct R2 credentials \
+                "\"r2\" is only supported for type = \"api_token\" profiles (direct R2 credentials \
                  need a static-token parent)",
             );
         }
@@ -609,7 +613,7 @@ mod tests {
         .unwrap();
         let source = |name: &str| match &config.profile(name).unwrap().kind {
             Kind::OAuth2(o) => o.provider_source(),
-            Kind::Token => unreachable!(),
+            Kind::ApiToken => unreachable!(),
         };
         assert_eq!(source("personal"), ProviderSource::Cloudflare);
         assert_eq!(source("brokered"), ProviderSource::Broker);
@@ -621,7 +625,7 @@ mod tests {
 
     #[test]
     fn rejects_secrets_unknown_keys_and_bad_types() {
-        let e = parse_err("[a]\ntype=\"token\"\naccount_id=\"x\"\ntoken=\"s\"\n");
+        let e = parse_err("[a]\ntype=\"api_token\"\naccount_id=\"x\"\ntoken=\"s\"\n");
         assert!(e.contains("secret-like key \"token\"") && e.contains("cf-vault login -p a"));
         assert!(!e.contains("\"s\""));
         let e =
@@ -632,7 +636,7 @@ mod tests {
         assert!(e.contains("unknown key \"oauth2.exhange\"") && e.contains("did you mean"));
         let e = parse_err("[a]\ntype=\"nope\"\naccount_id=\"x\"\n");
         assert!(e.contains("profile \"a\"") && e.contains("unknown type \"nope\""));
-        let e = parse_err("[a]\ntype=\"token\"\n");
+        let e = parse_err("[a]\ntype=\"api_token\"\n");
         assert!(e.contains("\"account_id\" is required"));
     }
 
@@ -666,29 +670,32 @@ mod tests {
     #[test]
     fn r2_is_one_bucket_on_token_profiles_only() {
         let ok = Config::parse(
-            "[a]\ntype=\"token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\npermission=\"object-read-only\"\nprefixes=[\"p/\"]\n",
+            "[a]\ntype=\"api_token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\npermission=\"object-read-only\"\nprefixes=[\"p/\"]\n",
         )
         .unwrap();
         let r2 = ok.profiles[0].r2.clone().unwrap();
         assert_eq!(r2.permission, Permission::ObjectReadOnly);
         assert_eq!(r2.prefixes, vec!["p/".to_string()]);
-        let default =
-            Config::parse("[a]\ntype=\"token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\n")
-                .unwrap();
+        let default = Config::parse(
+            "[a]\ntype=\"api_token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\n",
+        )
+        .unwrap();
         assert_eq!(
             default.profiles[0].r2.as_ref().unwrap().permission,
             Permission::ObjectReadWrite
         );
 
-        let e =
-            parse_err("[a]\ntype=\"token\"\naccount_id=\"x\"\n[a.r2]\nbucket=[\"one\",\"two\"]\n");
+        let e = parse_err(
+            "[a]\ntype=\"api_token\"\naccount_id=\"x\"\n[a.r2]\nbucket=[\"one\",\"two\"]\n",
+        );
         assert!(e.contains("use one profile per bucket"));
-        let e = parse_err("[a]\ntype=\"token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"Bad_Name\"\n");
+        let e =
+            parse_err("[a]\ntype=\"api_token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"Bad_Name\"\n");
         assert!(e.contains("not a valid R2 bucket name"));
-        let e = parse_err("[a]\ntype=\"token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\npermission=\"admin\"\n");
+        let e = parse_err("[a]\ntype=\"api_token\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\npermission=\"admin\"\n");
         assert!(e.contains("r2.permission"));
         let e = parse_err("[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\n");
-        assert!(e.contains("only supported for type = \"token\""));
+        assert!(e.contains("only supported for type = \"api_token\""));
         let e = parse_err(
             "[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\n\
              [a.oauth2.exchange]\nurl=\"https://b\"\nprofile=\"p\"\n",
@@ -699,17 +706,17 @@ mod tests {
     #[test]
     fn names_are_validated_and_all_profiles_are_reported() {
         let e = parse_err(
-            "[\"-bad\"]\ntype=\"token\"\naccount_id=\"x\"\n[ok]\ntype=\"nope\"\naccount_id=\"x\"\n",
+            "[\"-bad\"]\ntype=\"api_token\"\naccount_id=\"x\"\n[ok]\ntype=\"nope\"\naccount_id=\"x\"\n",
         );
         assert!(e.contains("profile \"-bad\"") && e.contains("profile \"ok\""));
         let long = "a".repeat(65);
-        let e = parse_err(&format!("[{long}]\ntype=\"token\"\naccount_id=\"x\"\n"));
+        let e = parse_err(&format!("[{long}]\ntype=\"api_token\"\naccount_id=\"x\"\n"));
         assert!(e.contains("1–64 characters"));
     }
 
     #[test]
     fn unknown_profile_lists_the_available_ones() {
-        let config = Config::parse("[a]\ntype=\"token\"\naccount_id=\"x\"\n").unwrap();
+        let config = Config::parse("[a]\ntype=\"api_token\"\naccount_id=\"x\"\n").unwrap();
         let e = config.profile("zzz").unwrap_err().to_string();
         assert!(e.contains("available profiles: a"));
         assert!(config
@@ -719,8 +726,17 @@ mod tests {
     }
 
     #[test]
+    fn the_old_token_type_name_points_at_the_new_one() {
+        let e = parse_err("[a]\ntype=\"token\"\naccount_id=\"x\"\n");
+        assert!(e.contains("renamed to \"api_token\""), "{e}");
+        let e = parse_err("[a]\ntype=\"nope\"\naccount_id=\"x\"\n");
+        assert!(e.contains("expected \"oauth2\" or \"api_token\""), "{e}");
+    }
+
+    #[test]
     fn a_profile_with_oauth_table_but_token_type_is_rejected() {
-        let e = parse_err("[a]\ntype=\"token\"\naccount_id=\"x\"\n[a.oauth2]\nclient_id=\"c\"\n");
+        let e =
+            parse_err("[a]\ntype=\"api_token\"\naccount_id=\"x\"\n[a.oauth2]\nclient_id=\"c\"\n");
         assert!(e.contains("only valid for type = \"oauth2\""));
     }
 

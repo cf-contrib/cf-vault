@@ -107,11 +107,11 @@ impl ExecCommand {
         let mut credentials = self.credentials(&profile, args)?;
 
         // Direct R2 credentials come from a static token
-        if let (Kind::Token, Some(r2_settings)) = (&profile.kind, &profile.r2) {
+        if let (Kind::ApiToken, Some(r2_settings)) = (&profile.kind, &profile.r2) {
             let token = credentials
                 .api_token
                 .clone()
-                .expect("a token profile always has a token");
+                .expect("an api_token profile always has a token");
             let lifetime = ttl
                 .map(|t| Duration::from_secs(t.secs))
                 .unwrap_or(r2::DEFAULT_TTL);
@@ -170,7 +170,7 @@ impl ExecCommand {
             };
         }
         match &profile.kind {
-            Kind::Token => {
+            Kind::ApiToken => {
                 let session = self
                     .store
                     .load(&profile.name)?

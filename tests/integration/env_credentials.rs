@@ -6,7 +6,7 @@ use crate::helpers::{broker::Broker, provider::Provider, *};
 
 const OAUTH_CONFIG: &str = "[personal]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
                             [personal.oauth2]\nissuer = \"http://127.0.0.1:9\"\nclient_id = \"c\"\n\
-                            [ci]\ntype = \"token\"\naccount_id = \"abc123\"\n";
+                            [ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n";
 
 fn no_store(config: &str) -> Workspace {
     // The store is unavailable: any attempt to open it fails the run

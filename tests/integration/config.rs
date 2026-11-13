@@ -2,12 +2,12 @@
 
 use crate::helpers::*;
 
-const TOKEN_PROFILE: &str = "[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n";
+const TOKEN_PROFILE: &str = "[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n";
 
 #[test]
 fn every_bad_profile_is_reported_and_no_value_is_echoed() {
     let ws = Workspace::new(&format!(
-        "[a]\ntype = \"token\"\naccount_id = \"x\"\ntoken = \"{SENTINEL}\"\n\
+        "[a]\ntype = \"api_token\"\naccount_id = \"x\"\ntoken = \"{SENTINEL}\"\n\
          [b]\ntype = \"nope\"\naccount_id = \"x\"\n"
     ));
     let out = run(&ws, &["list"]);

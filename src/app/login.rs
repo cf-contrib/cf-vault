@@ -1,4 +1,4 @@
-//! `login`: browser sign-in for OAuth profiles, a hidden prompt for token profiles.
+//! `login`: browser sign-in for OAuth profiles, a hidden prompt for api_token profiles.
 
 use std::io::IsTerminal;
 
@@ -39,7 +39,7 @@ impl LoginCommand {
                 }
                 auth::login_oauth(&profile, &self.store, state_dir, args.no_browser)?;
             }
-            Kind::Token => {
+            Kind::ApiToken => {
                 auth::login_token(&profile, &self.store, state_dir, self.prompt.as_ref())?;
             }
         }

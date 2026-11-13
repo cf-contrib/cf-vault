@@ -38,7 +38,7 @@ fn a_whole_session_leaks_no_token_anywhere_but_the_store() {
 
 #[test]
 fn error_paths_never_echo_a_supplied_token() {
-    let ws = Workspace::new("[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n");
+    let ws = Workspace::new("[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n");
     // A token that is supplied but the profile is unknown: nothing about the value may show
     let out = ws
         .interactive()

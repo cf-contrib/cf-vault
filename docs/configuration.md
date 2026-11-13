@@ -20,11 +20,11 @@ never a value.
 | `[p.oauth2]` | `redirect_port` | Loopback port of the sign-in callback, default `8250`. Cloudflare matches redirect URIs exactly, so register this one. |
 | `[p.oauth2.exchange]` | `url`, `profile` | Trade the ID token at this broker for this broker profile. Both required. |
 | `[p.oauth2.exchange]` | `provider` | The broker's name for the identity provider; only needed when it lists several. |
-| `[p.r2]` | `bucket` | Exactly one bucket (use one profile per bucket). `token` profiles only. |
+| `[p.r2]` | `bucket` | Exactly one bucket (use one profile per bucket). `api_token` profiles only. |
 | `[p.r2]` | `permission` | `object-read-write` (default) or `object-read-only`. |
 | `[p.r2]` | `prefixes` | Key prefixes the credentials are limited to; default the whole bucket. |
 
-`r2` is valid on `type = "token"` profiles only, and never together with `exchange` (the broker
+`r2` is valid on `type = "api_token"` profiles only, and never together with `exchange` (the broker
 profile decides what is issued).
 
 ## How an OAuth profile resolves
@@ -63,7 +63,7 @@ scopes = ["offline_access", "dns.write", "zone.write"]
 
 # A static API token, with temporary R2 credentials for one bucket
 [ci-state]
-type = "token"
+type = "api_token"
 account_id = "abc123"
 
 [ci-state.r2]

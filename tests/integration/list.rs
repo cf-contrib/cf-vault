@@ -2,8 +2,8 @@
 
 use crate::helpers::*;
 
-const CONFIG: &str = "[tokened]\ntype = \"token\"\naccount_id = \"a1\"\n\
-                      [empty-token]\ntype = \"token\"\naccount_id = \"a2\"\n\
+const CONFIG: &str = "[tokened]\ntype = \"api_token\"\naccount_id = \"a1\"\n\
+                      [empty-token]\ntype = \"api_token\"\naccount_id = \"a2\"\n\
                       [fresh]\ntype = \"oauth2\"\naccount_id = \"a3\"\n\
                       [fresh.oauth2]\nissuer = \"http://127.0.0.1:9\"\nclient_id = \"fake-client\"\n\
                       [stale]\ntype = \"oauth2\"\naccount_id = \"a4\"\n\
@@ -80,7 +80,7 @@ fn the_json_form_is_stable() {
         ["account_id", "exchange", "profile", "state", "type"]
     );
     assert_eq!(first["profile"], "tokened");
-    assert_eq!(first["type"], "token");
+    assert_eq!(first["type"], "api_token");
     assert_eq!(first["exchange"], false);
     assert_eq!(first["state"], "static token");
     let by_name = |n: &str| {

@@ -3,7 +3,7 @@
 
 use crate::helpers::*;
 
-const CONFIG: &str = "[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n\
+const CONFIG: &str = "[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n\
                       [personal]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
                       [personal.oauth2]\nissuer = \"http://127.0.0.1:9\"\nclient_id = \"c\"\n";
 

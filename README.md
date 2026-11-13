@@ -28,7 +28,7 @@ cf-vault exec -p production -- terraform plan     # credentials exist only for t
 |----------|-----|------|
 | Team access with policy-scoped, short-lived tokens and R2 credentials | an `oauth2` profile with `exchange` at a [cloudflare-sts](https://github.com/cf-contrib/cloudflare-sts) broker | [Broker](docs/broker.md) |
 | Your own identity provider, or Cloudflare's own sign-in with your own client | an `oauth2` profile with `issuer` and `client_id` | [Cloudflare OAuth](docs/cloudflare-oauth.md) |
-| A plain API token kept in the keychain, optionally with temporary R2 credentials | a `token` profile | [R2](docs/r2.md) |
+| A plain API token kept in the keychain, optionally with temporary R2 credentials | an `api_token` profile | [R2](docs/r2.md) |
 | CI, or a machine with no keychain | environment variables | [CI](docs/ci.md) |
 
 Every guide is in [docs/](docs/README.md).
@@ -62,7 +62,7 @@ url = "https://cloudflare-sts-api.example.com"
 profile = "infra-admins:tofu-plan"
 
 [ci-state]
-type = "token"
+type = "api_token"
 account_id = "abc123"
 
 [ci-state.r2]
@@ -84,7 +84,7 @@ cf-vault list   [--json]                                 profiles and session st
 
 * **`-p`/`--profile`** names the profile, exactly once; `CF_VAULT_PROFILE` is the default.
 * **login** runs the browser sign-in (authorization code with PKCE) for `oauth2` profiles and asks
-  for a hidden API token for `token` profiles. The old session is replaced only after the new
+  for a hidden API token for `api_token` profiles. The old session is replaced only after the new
   sign-in succeeds.
 * **exec** renews an expiring session first, never starts the command when credentials cannot be
   obtained, and releases a broker-issued token when the command ends. The command receives

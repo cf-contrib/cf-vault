@@ -122,7 +122,7 @@ pub enum ProgramCommand {
         about = "Sign in, or store an API token, for a profile.",
         long_about = "Run the browser sign-in (Authorization Code with PKCE) of an OAuth profile \
                       and store the session in the system keychain, or ask for a hidden API \
-                      token for a token profile. The old session is replaced only after the new \
+                      token for an api_token profile. The old session is replaced only after the new \
                       sign-in succeeds.",
         next_display_order = 1
     )]

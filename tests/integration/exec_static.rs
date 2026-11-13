@@ -1,10 +1,10 @@
-//! `exec` for token profiles.
+//! `exec` for api_token profiles.
 
 use expectrl::{session::OsSession, Eof, Expect, Session};
 
 use crate::helpers::*;
 
-const CONFIG: &str = "[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n";
+const CONFIG: &str = "[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n";
 
 #[test]
 fn the_stored_token_is_delivered_with_the_account() {

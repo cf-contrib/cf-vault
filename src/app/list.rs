@@ -29,7 +29,7 @@ pub struct ListCommand {
 /// The label of a profile's session state.
 pub fn label(profile: &Profile, stored: Option<&Session>, now: OffsetDateTime) -> &'static str {
     match (auth::state(profile, stored, now), &profile.kind) {
-        (CredentialState::Usable, Kind::Token) => "static token",
+        (CredentialState::Usable, Kind::ApiToken) => "static token",
         (CredentialState::Usable | CredentialState::Expiring, _) => "signed in",
         (CredentialState::Expired, _) => "expired",
         (CredentialState::Absent | CredentialState::StaleIdentity, _) => "not signed in",
@@ -38,7 +38,7 @@ pub fn label(profile: &Profile, stored: Option<&Session>, now: OffsetDateTime) -
 
 fn kind_name(profile: &Profile) -> &'static str {
     match profile.kind {
-        Kind::Token => "token",
+        Kind::ApiToken => "api_token",
         Kind::OAuth2(_) => "oauth2",
     }
 }

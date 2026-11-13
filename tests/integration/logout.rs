@@ -60,7 +60,7 @@ fn a_failing_revocation_is_a_warning_and_the_session_is_still_removed() {
 
 #[test]
 fn logout_of_a_token_profile_just_deletes_the_token() {
-    let ws = Workspace::new("[ci]\ntype = \"token\"\naccount_id = \"abc123\"\n");
+    let ws = Workspace::new("[ci]\ntype = \"api_token\"\naccount_id = \"abc123\"\n");
     ws.seed_token("ci", FAKE_TOKEN);
     let out = run(&ws, &["logout", "-p", "ci"]);
     assert!(out.success());
