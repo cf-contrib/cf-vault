@@ -296,7 +296,7 @@ Task: "logout command in src/app/logout.rs"
 - [P] means different files and no dependency on an incomplete task.
 - Commit after each task or logical group; stop at any checkpoint to validate.
 - Fake credentials only; never a real token in code, tests, fixtures, or commits (constitution IX, organization data-handling rules).
-- File paths follow plan.md's current tree. If the proposed restructure (`creds/` with `exchange.rs` and `r2.rs`, `api_token.rs`, `vault/secret.rs`, `vault/delivery.rs`) is adopted, update the paths in T004, T010, T017, T018, T039, T046, T052 accordingly.
+- File paths follow plan.md's tree; the broker client and the credentials/R2 modules moved after the first implementation (see the module layout note at the end).
 
 ## Implementation notes (deviations from the tasks as written)
 
