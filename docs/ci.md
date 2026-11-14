@@ -6,7 +6,7 @@ environment:
 
 | Profile | Variable |
 |---|---|
-| any profile **without** `exchange` (`token` or `oauth2`) | `CLOUDFLARE_API_TOKEN`, delivered as is |
+| any profile **without** `exchange` (`api_token` or `oauth2`) | `CLOUDFLARE_API_TOKEN`, delivered as is |
 | a profile **with** `exchange` | `CF_VAULT_ID_TOKEN`, an identity token exchanged at the broker (`CLOUDFLARE_API_TOKEN` is not a substitute) |
 
 With nothing supplied, `exec` fails at once and never waits for input. `login` needs a terminal
