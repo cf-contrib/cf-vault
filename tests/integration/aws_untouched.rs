@@ -62,7 +62,7 @@ fn no_aws_variable_is_added_when_none_was_set() {
 fn an_r2_bucket_is_rejected_next_to_a_broker_exchange() {
     let ws = Workspace::new(
         "[a]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n[a.r2]\nbucket = \"tf-state\"\n\
-         [a.oauth2.exchange]\nurl = \"https://broker.example\"\nprofile = \"p\"\n",
+         [a.oauth2.exchange]\nissuer = \"https://broker.example\"\nscopes = [\"p\"]\n",
     );
     let out = run(&ws, &["list"]);
     assert_eq!(out.code, Some(1));

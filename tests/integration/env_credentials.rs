@@ -45,7 +45,7 @@ fn brokered(provider: &Provider, broker: &Broker) -> Workspace {
     let _ = provider;
     no_store(&format!(
         "[production]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
-         [production.oauth2.exchange]\nurl = \"{}\"\nprofile = \"infra-admins:tofu-plan\"\n",
+         [production.oauth2.exchange]\nissuer = \"{}\"\nscopes = [\"infra-admins:tofu-plan\"]\n",
         broker.url()
     ))
 }
@@ -114,7 +114,7 @@ fn the_identity_token_in_the_environment_beats_a_stored_session() {
     );
     let ws = Workspace::new(&format!(
         "[production]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
-         [production.oauth2.exchange]\nurl = \"{}\"\nprofile = \"p\"\n",
+         [production.oauth2.exchange]\nissuer = \"{}\"\nscopes = [\"p\"]\n",
         broker.url()
     ));
     ws.seed_oauth(
