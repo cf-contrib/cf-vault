@@ -1,6 +1,6 @@
 [package]
 name = "cf-vault"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Manage Cloudflare credentials: sign in, keep them in the system keychain, and run commands with them"
 license = "MIT"
