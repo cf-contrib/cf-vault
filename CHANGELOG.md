@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/cf-contrib/cf-vault/compare/v0.1.1...v0.2.0) (2026-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* rename `url` to `issuer` and `profile` to `scopes` in [<profile>.oauth2.exchange]. The broker must read `scope` (cloudflare-sts needs the matching change).
+
+### Features
+
+* name the exchange broker by issuer or endpoints, ask with scopes ([218971b](https://github.com/cf-contrib/cf-vault/commit/218971b1149488edead8131f6dea436b31a4849b))
+
+
+### Bug Fixes
+
+* report a renamed exchange key once, without follow-on errors ([daed161](https://github.com/cf-contrib/cf-vault/commit/daed1610023d9ca90adc22d7dece4e464a6963c9))
+
 ## [0.1.1](https://github.com/cf-contrib/cf-vault/compare/v0.1.0...v0.1.1) (2026-11-13)
 
 
