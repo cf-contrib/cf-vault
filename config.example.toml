@@ -1,19 +1,44 @@
-# cf-vault configuration. Every top-level table is a profile named after the table.
-# No secrets belong in this file: use `cf-vault login -p <profile>`.
+# cf-vault configuration: ~/.config/cf-vault/config.toml
+#
+# Each top-level table is a profile with one Cloudflare `account_id` and one authentication type,
+# `oauth2` or `api_token`. A profile has up to three kinds of sub-table:
+#   - `[<profile>.oauth2]` holds the sign-in settings of an oauth2 profile;
+#   - `[<profile>.oauth2.exchange]` trades the ID token at a token broker (RFC 8693);
+#   - `[<profile>.r2]` asks for temporary R2 credentials for one bucket.
+# The file never holds tokens or secrets: `cf-vault login` asks for them and keeps them in the
+# system keychain. Endpoint values below are illustrative; they must match the real service.
 
 # Cloudflare's own sign-in (available once cf-vault's Cloudflare OAuth client is registered).
 [personal]
 type = "oauth2"
 account_id = "abc123"
 
-# Federated sign-in: the identity provider is discovered from the broker.
+# Federated sign-in: name the broker by its issuer and the endpoints and the identity provider are
+# discovered from its metadata (RFC 8414 or OpenID Connect). Endpoints written here override the
+# discovered ones.
 [production]
 type = "oauth2"
 account_id = "xyz789"
 
 [production.oauth2.exchange]
-url = "https://cloudflare-sts-api.example.com"
-profile = "infra-admins:tofu-plan"
+issuer = "https://cloudflare-sts-api.example.com"
+scopes = ["infra-admins:tofu-plan"]   # what to ask for; cloudflare-sts reads each as a profile
+
+# A broker that publishes no metadata, or any other RFC 8693 broker: name its endpoints. With no
+# issuer there is nothing to learn the sign-in provider from, so it is named in [oauth2].
+[other-broker]
+type = "oauth2"
+account_id = "xyz789"
+
+[other-broker.oauth2]
+issuer = "https://id.example.com"
+client_id = "cf-vault"                # a public client: there is no client secret
+
+[other-broker.oauth2.exchange]
+token_endpoint = "https://broker.example.com/token"
+revocation_endpoint = "https://broker.example.com/revoke"   # optional: without it nothing is released
+scopes = ["cloudflare:dns", "cloudflare:r2"]                # sent space-separated
+audience = "https://api.cloudflare.com"                     # optional
 
 # Static API token, with temporary R2 credentials for one bucket.
 [ci-state]

@@ -12,21 +12,48 @@ short-lived Cloudflare credentials in its environment for that command only. It 
 [aws-vault](https://github.com/99designs/aws-vault) and
 [nix-vault](https://github.com/nixos-contrib/nix-vault).
 
+> [!WARNING]
+> **Pre-1.0.** The configuration file's keys and the command line may still
+> change between minor versions.
+
 ```bash
 cf-vault login -p production                      # once: browser sign-in
 cf-vault exec -p production -- terraform plan     # credentials exist only for this command
 ```
 
-```text
- login ──► your keychain (once)
- exec  ──► short-lived credentials ──► your command (terraform, wrangler, ...) ──► released when it ends
+## How it works
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant Vault as cf-vault
+    participant Store as Keychain
+    participant IdP as Identity provider
+    participant Broker as Token broker
+    participant Cmd as terraform plan ...
+
+    You->>Vault: login -p production (once)
+    Vault->>IdP: browser sign-in (authorization code + PKCE)
+    Vault->>Store: save the session
+    You->>Vault: exec -p production -- terraform plan
+    Vault->>Store: read (renew if expiring)
+    Vault->>Broker: exchange the ID token (RFC 8693)
+    Broker-->>Vault: short-lived API token, R2 credentials
+    Vault->>Cmd: run with the credentials in its environment
+    Cmd-->>Vault: exits
+    Vault->>Broker: release the token (RFC 7009)
 ```
+
+The session lives in the keychain. The command gets the credentials in its own environment and
+nothing else does: no shell profile, dotfile or CI variable holds them. Profiles without a broker
+skip the exchange and deliver the stored API token, or temporary R2 credentials derived from it.
 
 ## Pick your setup
 
 | You want | Use | Read |
 |----------|-----|------|
-| Team access with policy-scoped, short-lived tokens and R2 credentials | an `oauth2` profile with `exchange` at a [cloudflare-sts](https://github.com/cf-contrib/cloudflare-sts) broker | [Broker](docs/broker.md) |
+| Team access with policy-scoped, short-lived tokens and R2 credentials | an `oauth2` profile with `exchange` at a [cloudflare-sts](https://github.com/cf-contrib/cloudflare-sts) broker, or any other RFC 8693 broker | [Broker](docs/broker.md) |
+| A broker that publishes metadata | `issuer` instead of the endpoints | [Endpoint discovery](docs/configuration.md#endpoint-discovery) |
 | Your own identity provider, or Cloudflare's own sign-in with your own client | an `oauth2` profile with `issuer` and `client_id` | [Cloudflare OAuth](docs/cloudflare-oauth.md) |
 | A plain API token kept in the keychain | an `api_token` profile | [Configuration](docs/configuration.md) |
 | Temporary R2 credentials, from a broker, an API token or Cloudflare's own OAuth | an `[r2]` table, or a broker bucket | [R2](docs/r2.md) |
@@ -47,31 +74,27 @@ gnome-keyring or KeePassXC), so one must be running in your session. cf-vault ne
 another store: without a usable keychain, `login` fails. A machine without one uses environment
 variables: see [CI](docs/ci.md).
 
-## Configuration
+## Quick start
 
-Profiles live in `~/.config/cf-vault/config.toml` (or `$XDG_CONFIG_HOME/cf-vault/config.toml`, or
-the file named by `--config` / `CF_VAULT_CONFIG`). Each top-level table is a profile with an
-`account_id` and a `type`: `oauth2` or `token`.
+1. **Write a profile** in `~/.config/cf-vault/config.toml`:
+   ```toml
+   [production]
+   type = "oauth2"
+   account_id = "xyz789"
 
-```toml
-[production]
-type = "oauth2"
-account_id = "xyz789"
-
-[production.oauth2.exchange]
-url = "https://cloudflare-sts-api.example.com"
-profile = "infra-admins:tofu-plan"
-
-[ci-state]
-type = "api_token"
-account_id = "abc123"
-
-[ci-state.r2]
-bucket = "org-terraform-state"
-```
+   [production.oauth2.exchange]
+   issuer = "https://cloudflare-sts-api.example.com"   # the broker; its metadata names the rest
+   scopes = ["infra-admins:tofu-plan"]                 # what to ask the broker for
+   ```
+2. **Log in** once: `cf-vault login -p production`. A browser step signs you in; an `api_token`
+   profile asks for a hidden token instead.
+3. **Run a command** with it: `cf-vault exec -p production --ttl 30m -- terraform plan`.
+4. **Check** with `cf-vault list`: names, types, accounts and session state, never a secret.
 
 The file never holds tokens or secrets, and the whole file is validated before any command runs.
-Every key is in [Configuration](docs/configuration.md); a full example is
+A broker that publishes metadata is named with `issuer`; one that does not is named by its
+`token_endpoint`: see [endpoint discovery](docs/configuration.md#endpoint-discovery). Every key is
+in [Configuration](docs/configuration.md); a full example is
 [`config.example.toml`](config.example.toml).
 
 ## Commands
@@ -83,23 +106,8 @@ cf-vault logout -p <name>                                remove the stored sessi
 cf-vault list   [--json]                                 profiles and session state
 ```
 
-* **`-p`/`--profile`** names the profile, exactly once; `CF_VAULT_PROFILE` is the default.
-* **login** runs the browser sign-in (authorization code with PKCE) for `oauth2` profiles and asks
-  for a hidden API token for `api_token` profiles. The old session is replaced only after the new
-  sign-in succeeds.
-* **exec** renews an expiring session first, never starts the command when credentials cannot be
-  obtained, and releases a broker-issued token when the command ends. The command receives
-  `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and, when R2 credentials are issued,
-  `CLOUDFLARE_R2_ACCESS_KEY_ID`, `…_SECRET_ACCESS_KEY`, `…_SESSION_TOKEN`, `…_ENDPOINT` and
-  `…_BUCKET`. Inherited `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_R2_*` the profile does not grant are
-  removed; `AWS_*` is never touched.
-* **logout** removes the local session. The refresh token is revoked at the provider where it has a
-  revocation endpoint.
-* **list** never shows a secret.
-
-Exit statuses: `0` success; `1` failure before the command started; `2` usage error; `126`/`127`
-command not executable / not found; otherwise the command's own status (`128+n` when signal `n`
-ended it).
+What each does, the variables the command receives and the exit statuses are in
+[Commands](docs/commands.md).
 
 ## Limitations
 
