@@ -11,7 +11,7 @@ const CONFIG: &str = "[tokened]\ntype = \"api_token\"\naccount_id = \"a1\"\n\
                       [renewable]\ntype = \"oauth2\"\naccount_id = \"a5\"\n\
                       [renewable.oauth2]\nissuer = \"http://127.0.0.1:9\"\nclient_id = \"fake-client\"\n\
                       [absent]\ntype = \"oauth2\"\naccount_id = \"a6\"\n\
-                      [absent.oauth2.exchange]\nurl = \"https://broker.example\"\nprofile = \"p\"\n";
+                      [absent.oauth2.exchange]\nissuer = \"https://broker.example\"\nscopes = [\"p\"]\n";
 
 fn seeded() -> Workspace {
     let ws = Workspace::new(CONFIG);

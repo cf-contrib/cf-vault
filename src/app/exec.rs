@@ -219,12 +219,14 @@ fn exchange_credentials(
     id_token: &Secret,
     ttl: Option<&str>,
 ) -> Result<CredentialSet> {
-    let metadata = sts::discover(&settings.url)?;
-    let issued = sts::exchange(&metadata, id_token, &settings.profile, ttl)?;
-    let revocation = issued.access_token.clone().map(|token| Revocation {
-        endpoint: metadata.revocation_endpoint.clone(),
-        token,
-    });
+    let metadata = sts::discover(settings, false)?;
+    let issued = sts::exchange(&metadata, id_token, settings, ttl)?;
+    // A broker without a revocation endpoint cannot release the token: it expires on its own
+    let revocation = issued
+        .access_token
+        .clone()
+        .zip(metadata.revocation_endpoint.clone())
+        .map(|(token, endpoint)| Revocation { endpoint, token });
     if let Some(account) = &issued.account_id {
         if account != &profile.account_id {
             // Release what was issued before refusing to use it
@@ -242,7 +244,7 @@ fn exchange_credentials(
         api_token: issued.access_token,
         api_token_id: issued.token_id,
         account_id: profile.account_id.clone(),
-        r2: issued.r2,
+        r2: issued.r2_credentials,
         expires_at: issued.expires_at,
         revocation,
     })

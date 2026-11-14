@@ -80,7 +80,7 @@ pub fn resolve(profile: &Profile, oauth: &OAuth) -> Result<Resolved> {
         }
         ProviderSource::Broker => {
             let exchange = oauth.exchange.as_ref().expect("broker source has exchange");
-            let metadata = sts::discover(&exchange.url)?;
+            let metadata = sts::discover(exchange, true)?;
             let idp = sts::pick_provider(&metadata, exchange.provider.as_deref())?;
             (idp.issuer, idp.client_id)
         }
@@ -328,7 +328,7 @@ mod tests {
         let config = Config::parse(
             "[t]\ntype=\"api_token\"\naccount_id=\"a\"\n\
              [o]\ntype=\"oauth2\"\naccount_id=\"a\"\n[o.oauth2]\nissuer=\"https://id.example\"\nclient_id=\"c\"\n\
-             [x]\ntype=\"oauth2\"\naccount_id=\"a\"\n[x.oauth2.exchange]\nurl=\"https://b.example\"\nprofile=\"p\"\n",
+             [x]\ntype=\"oauth2\"\naccount_id=\"a\"\n[x.oauth2.exchange]\nissuer=\"https://b.example\"\nscopes=[\"p\"]\n",
         )
         .unwrap();
         (

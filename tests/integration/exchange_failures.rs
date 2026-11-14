@@ -13,7 +13,7 @@ fn setup() -> (Provider, Broker, Workspace) {
     let ws = Workspace::new(&format!(
         "[production]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
          [production.oauth2]\nredirect_port = {}\n\
-         [production.oauth2.exchange]\nurl = \"{}\"\nprofile = \"{PROFILE}\"\n",
+         [production.oauth2.exchange]\nissuer = \"{}\"\nscopes = [\"{PROFILE}\"]\n",
         free_port(),
         broker.url()
     ));
@@ -104,7 +104,7 @@ fn an_unreachable_broker_never_falls_back_to_a_weaker_credential() {
     ws.set_config(&format!(
         "[production]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
          [production.oauth2]\nissuer = \"{}\"\nclient_id = \"{}\"\nredirect_port = {}\n\
-         [production.oauth2.exchange]\nurl = \"{dead}\"\nprofile = \"{PROFILE}\"\n",
+         [production.oauth2.exchange]\nissuer = \"{dead}\"\nscopes = [\"{PROFILE}\"]\n",
         provider.url(),
         provider::CLIENT_ID,
         free_port()

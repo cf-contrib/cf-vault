@@ -125,7 +125,7 @@ fn broker_profile_config(provider: &Provider, port: u16) -> String {
     format!(
         "[personal]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
          [personal.oauth2]\nissuer = \"{}\"\nclient_id = \"{}\"\nredirect_port = {port}\n\
-         [personal.oauth2.exchange]\nurl = \"https://broker.example\"\nprofile = \"p\"\n",
+         [personal.oauth2.exchange]\nissuer = \"https://broker.example\"\nscopes = [\"p\"]\n",
         provider.url(),
         provider::CLIENT_ID
     )

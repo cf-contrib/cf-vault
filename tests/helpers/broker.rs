@@ -1,4 +1,4 @@
-//! A scripted token broker following the cloudflare-sts contract (contracts/broker.md).
+//! A scripted token broker following the cloudflare-sts contract (and RFC 8693).
 
 use std::sync::{Arc, Mutex};
 
@@ -18,6 +18,10 @@ pub struct State {
     pub providers: Vec<(String, String, String)>,
     /// Status the revocation endpoint answers with.
     pub revoke_status: u16,
+    /// Serve the metadata only at the OpenID Connect path, not at RFC 8414's.
+    pub openid_only: bool,
+    /// Whether the metadata names a revocation endpoint.
+    pub with_revocation: bool,
 }
 
 pub struct Broker {
@@ -34,6 +38,8 @@ impl Broker {
             with_bucket: false,
             providers,
             revoke_status: 200,
+            openid_only: false,
+            with_revocation: true,
         }));
         let shared = state.clone();
         let server = Server::start(move |base| -> Handler {
@@ -50,7 +56,18 @@ impl Broker {
 fn handle(base: &str, state: &Arc<Mutex<State>>, request: &Request) -> Response {
     let mut state = state.lock().unwrap();
     match (request.method.as_str(), request.path.as_str()) {
-        ("GET", "/.well-known/oauth-authorization-server") => {
+        ("GET", "/.well-known/oauth-authorization-server") if state.openid_only => {
+            Response::json(404, "{}")
+        }
+        (
+            "GET",
+            "/.well-known/oauth-authorization-server" | "/.well-known/openid-configuration",
+        ) => {
+            let revocation = if state.with_revocation {
+                format!("\"revocation_endpoint\":\"{base}/oauth/revoke\",")
+            } else {
+                String::new()
+            };
             let providers: Vec<String> = state
                 .providers
                 .iter()
@@ -62,8 +79,7 @@ fn handle(base: &str, state: &Arc<Mutex<State>>, request: &Request) -> Response 
                 200,
                 format!(
                     "{{\"issuer\":\"{base}\",\"token_endpoint\":\"{base}/oauth/token\",\
-                     \"revocation_endpoint\":\"{base}/oauth/revoke\",\
-                     \"identity_providers\":[{}]}}",
+                     {revocation}\"identity_providers\":[{}]}}",
                     providers.join(",")
                 ),
             )
@@ -74,7 +90,7 @@ fn handle(base: &str, state: &Arc<Mutex<State>>, request: &Request) -> Response 
                 return Response::json(status, body);
             }
             let form = request.form();
-            let profile = form.get("profile").cloned().unwrap_or_default();
+            let scope = form.get("scope").cloned().unwrap_or_default();
             let mut body = String::from("{");
             if state.with_token {
                 body.push_str("\"access_token\":\"FAKE_BROKER_TOKEN\",\"token_id\":\"3f2a9c\",");
@@ -83,7 +99,7 @@ fn handle(base: &str, state: &Arc<Mutex<State>>, request: &Request) -> Response 
             body.push_str(&format!(
                 "\"issued_token_type\":\"urn:ietf:params:oauth:token-type:access_token\",\
                  \"token_type\":\"{token_type}\",\"expires_in\":900,\"expires_at\":{},\
-                 \"account_id\":\"{}\",\"profile\":\"{profile}\"",
+                 \"account_id\":\"{}\",\"scope\":\"{scope}\"",
                 super::provider::now() + 900,
                 state.account_id
             ));

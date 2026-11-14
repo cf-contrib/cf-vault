@@ -24,7 +24,7 @@ fn exchange_only() -> Setup {
     let ws = Workspace::new(&format!(
         "[production]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
          [production.oauth2]\nredirect_port = {}\n\
-         [production.oauth2.exchange]\nurl = \"{}\"\nprofile = \"{PROFILE}\"\n",
+         [production.oauth2.exchange]\nissuer = \"{}\"\nscopes = [\"{PROFILE}\"]\n",
         free_port(),
         broker.url()
     ));
@@ -80,8 +80,9 @@ fn the_provider_is_discovered_and_the_command_gets_the_broker_token() {
         form["subject_token_type"],
         "urn:ietf:params:oauth:token-type:id_token"
     );
-    assert_eq!(form["profile"], PROFILE);
+    assert_eq!(form["scope"], PROFILE);
     assert!(!form.contains_key("ttl") && !form.contains_key("audience"));
+    assert!(!form.contains_key("profile"));
 
     // Released after the command exited
     let revokes = s.broker.server.hits("/oauth/revoke");
@@ -123,7 +124,7 @@ fn several_providers_need_a_name_and_none_is_an_error() {
     s.ws.set_config(&format!(
         "[production]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
          [production.oauth2]\nredirect_port = {}\n\
-         [production.oauth2.exchange]\nurl = \"{}\"\nprofile = \"{PROFILE}\"\nprovider = \"com.example.idp\"\n",
+         [production.oauth2.exchange]\nissuer = \"{}\"\nscopes = [\"{PROFILE}\"]\nprovider = \"com.example.idp\"\n",
         free_port(),
         s.broker.url()
     ));
@@ -213,7 +214,7 @@ fn an_explicit_provider_plus_exchange_signs_in_there_and_exchanges_its_id_token(
     let ws = Workspace::new(&format!(
         "[production]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
          [production.oauth2]\nissuer = \"{}\"\nclient_id = \"{}\"\nredirect_port = {}\n\
-         [production.oauth2.exchange]\nurl = \"{}\"\nprofile = \"{PROFILE}\"\n",
+         [production.oauth2.exchange]\nissuer = \"{}\"\nscopes = [\"{PROFILE}\"]\n",
         provider.url(),
         provider::CLIENT_ID,
         free_port(),
@@ -234,4 +235,66 @@ fn a_provider_without_an_id_token_cannot_be_used_with_a_broker() {
     assert_eq!(out.code, Some(1));
     assert!(out.stderr.contains("no ID token"), "{}", out.stderr);
     assert!(s.ws.stored("production").is_none());
+}
+
+#[test]
+fn metadata_is_read_from_the_openid_path_when_rfc_8414_has_none() {
+    let s = exchange_only();
+    s.broker.state.lock().unwrap().openid_only = true;
+    assert!(login(&s.ws, "production").success());
+    let out = exec(&s.ws, &[], &["sh", "-c", "echo $CLOUDFLARE_API_TOKEN"]);
+    assert!(out.success(), "{}", out.stderr);
+    assert_eq!(out.stdout.trim(), "FAKE_BROKER_TOKEN");
+    assert!(!s
+        .broker
+        .server
+        .hits("/.well-known/openid-configuration")
+        .is_empty());
+}
+
+#[test]
+fn endpoints_in_the_profile_need_no_metadata_and_scopes_and_audience_are_sent() {
+    let provider = Provider::start();
+    let broker = Broker::start(Vec::new(), "abc123");
+    let ws = Workspace::new(&format!(
+        "[production]\ntype = \"oauth2\"\naccount_id = \"abc123\"\n\
+         [production.oauth2]\nissuer = \"{}\"\nclient_id = \"{}\"\nredirect_port = {}\n\
+         [production.oauth2.exchange]\ntoken_endpoint = \"{base}/oauth/token\"\n\
+         revocation_endpoint = \"{base}/oauth/revoke\"\n\
+         scopes = [\"one\", \"two\"]\naudience = \"https://api.example\"\n",
+        provider.url(),
+        provider::CLIENT_ID,
+        free_port(),
+        base = broker.url()
+    ));
+    assert!(login(&ws, "production").success());
+    let out = exec(&ws, &[], &["sh", "-c", "echo $CLOUDFLARE_API_TOKEN"]);
+    assert!(out.success(), "{}", out.stderr);
+    assert_eq!(out.stdout.trim(), "FAKE_BROKER_TOKEN");
+
+    let form = broker.server.hits("/oauth/token")[0].form();
+    assert_eq!(form["scope"], "one two");
+    assert_eq!(form["audience"], "https://api.example");
+    assert_eq!(broker.server.hits("/oauth/revoke").len(), 1);
+    // Every endpoint is configured, so the metadata is never read
+    assert!(broker
+        .server
+        .hits("/.well-known/oauth-authorization-server")
+        .is_empty());
+    assert!(broker
+        .server
+        .hits("/.well-known/openid-configuration")
+        .is_empty());
+}
+
+#[test]
+fn a_broker_without_a_revocation_endpoint_is_used_and_nothing_is_released() {
+    let s = exchange_only();
+    s.broker.state.lock().unwrap().with_revocation = false;
+    assert!(login(&s.ws, "production").success());
+    let out = exec(&s.ws, &[], &["sh", "-c", "echo $CLOUDFLARE_API_TOKEN"]);
+    assert!(out.success(), "{}", out.stderr);
+    assert_eq!(out.stdout.trim(), "FAKE_BROKER_TOKEN");
+    assert!(s.broker.server.hits("/oauth/revoke").is_empty());
+    assert!(!out.stderr.contains("released token"), "{}", out.stderr);
 }

@@ -25,7 +25,14 @@ const SECRET_KEYS: [&str; 6] = [
 ];
 const PROFILE_KEYS: [&str; 4] = ["type", "account_id", "oauth2", "r2"];
 const OAUTH_KEYS: [&str; 5] = ["issuer", "client_id", "scopes", "redirect_port", "exchange"];
-const EXCHANGE_KEYS: [&str; 3] = ["url", "profile", "provider"];
+const EXCHANGE_KEYS: [&str; 6] = [
+    "issuer",
+    "token_endpoint",
+    "revocation_endpoint",
+    "scopes",
+    "audience",
+    "provider",
+];
 const R2_KEYS: [&str; 3] = ["bucket", "permission", "prefixes"];
 
 /// How a profile authenticates.
@@ -49,16 +56,27 @@ pub struct OAuth {
     /// Loopback port of the sign-in callback.
     pub redirect_port: u16,
     /// Token exchange at a broker.
-    pub exchange: Option<Exchange>,
+    pub exchange: Option<Box<Exchange>>,
 }
 
-/// The `[<profile>.oauth2.exchange]` settings.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// The `[<profile>.oauth2.exchange]` settings: an RFC 8693 token exchange at a broker.
+///
+/// The broker is named by its `issuer`, whose metadata supplies the endpoints, or by its
+/// endpoints; an endpoint written here always wins over the discovered one. At least one of
+/// `issuer` and `token_endpoint` is set.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Exchange {
-    /// Base URL of the broker.
-    pub url: String,
-    /// Broker profile to ask for.
-    pub profile: String,
+    /// The broker's issuer (its URL); its metadata is read to fill in the endpoints and to
+    /// learn which identity provider people sign in with.
+    pub issuer: Option<String>,
+    /// Where the token exchange is `POST`ed.
+    pub token_endpoint: Option<String>,
+    /// Where an issued token is revoked, when the broker has such an endpoint.
+    pub revocation_endpoint: Option<String>,
+    /// What to ask for (the `scope` of RFC 8693), sent space-separated; empty sends none.
+    pub scopes: Vec<String>,
+    /// The `audience` to ask for, when the broker wants one.
+    pub audience: Option<String>,
     /// The broker's name for the identity provider, to pick one when it lists several.
     pub provider: Option<String>,
 }
@@ -110,7 +128,7 @@ impl Profile {
     /// The broker settings, when the profile exchanges tokens.
     pub fn exchange(&self) -> Option<&Exchange> {
         match &self.kind {
-            Kind::OAuth2(oauth) => oauth.exchange.as_ref(),
+            Kind::OAuth2(oauth) => oauth.exchange.as_deref(),
             Kind::ApiToken => None,
         }
     }
@@ -141,7 +159,8 @@ impl OAuth {
                 issuer: issuer.clone(),
                 client_id: client_id.clone(),
             },
-            (_, _, Some(_)) => ProviderSource::Broker,
+            // Only a broker with an issuer has metadata to learn the provider from
+            (_, _, Some(exchange)) if exchange.issuer.is_some() => ProviderSource::Broker,
             _ => ProviderSource::Cloudflare,
         }
     }
@@ -429,6 +448,18 @@ fn parse_profile(name: &str, table: &Table, p: &mut Problems<'_>) -> Option<Prof
         (None, _) => None,
     };
 
+    if let Kind::OAuth2(oauth) = kind.as_ref().unwrap_or(&Kind::ApiToken) {
+        if let Some(exchange) = &oauth.exchange {
+            let own_provider = oauth.issuer.is_some() && oauth.client_id.is_some();
+            if exchange.issuer.is_none() && !own_provider {
+                p.add(
+                    "\"oauth2.exchange\" has no \"issuer\" to learn the identity provider \
+                     from, so \"oauth2.issuer\" and \"oauth2.client_id\" are required",
+                );
+            }
+        }
+    }
+
     let r2 = p.table(table, "r2", "").map(|t| parse_r2(t, p));
     if let (Some(Kind::OAuth2(oauth)), Some(_)) = (&kind, &r2) {
         if oauth.exchange.is_some() {
@@ -477,32 +508,62 @@ fn parse_oauth(table: Option<&Table>, p: &mut Problems<'_>) -> OAuth {
         Some(_) => p.add("\"oauth2.redirect_port\" must be an integer from 1 to 65535"),
     }
     if let Some(exchange) = p.table(table, "exchange", "oauth2.") {
-        oauth.exchange = parse_exchange(exchange, p);
+        oauth.exchange = parse_exchange(exchange, p).map(Box::new);
     }
     oauth
 }
 
 fn parse_exchange(table: &Table, p: &mut Problems<'_>) -> Option<Exchange> {
     p.keys(table, &EXCHANGE_KEYS, "oauth2.exchange");
-    let url = p.string(table, "url", "oauth2.exchange.");
-    let profile = p.string(table, "profile", "oauth2.exchange.");
-    let provider = p.string(table, "provider", "oauth2.exchange.");
-    if url.is_none() && !table.contains_key("url") {
-        p.add("\"oauth2.exchange.url\" is required");
+    if table.contains_key("url") {
+        p.add("\"oauth2.exchange.url\" was renamed to \"oauth2.exchange.issuer\"");
     }
-    if profile.is_none() && !table.contains_key("profile") {
-        p.add("\"oauth2.exchange.profile\" is required");
+    if table.contains_key("profile") {
+        p.add("\"oauth2.exchange.profile\" was replaced by \"oauth2.exchange.scopes\"");
     }
-    if let Some(url) = &url {
-        if !endpoint_allowed(url) {
-            p.add("\"oauth2.exchange.url\" must be an https URL");
+    let mut exchange = Exchange {
+        issuer: p.string(table, "issuer", "oauth2.exchange."),
+        token_endpoint: p.string(table, "token_endpoint", "oauth2.exchange."),
+        revocation_endpoint: p.string(table, "revocation_endpoint", "oauth2.exchange."),
+        scopes: p.strings(table, "scopes", "oauth2.exchange."),
+        audience: p.string(table, "audience", "oauth2.exchange."),
+        provider: p.string(table, "provider", "oauth2.exchange."),
+    };
+    if exchange.issuer.is_none()
+        && exchange.token_endpoint.is_none()
+        && !table.contains_key("url")
+        && !table.contains_key("issuer")
+        && !table.contains_key("token_endpoint")
+    {
+        p.add("\"oauth2.exchange\" needs an \"issuer\" or a \"token_endpoint\"");
+    }
+    for (key, value) in [
+        ("issuer", &mut exchange.issuer),
+        ("token_endpoint", &mut exchange.token_endpoint),
+        ("revocation_endpoint", &mut exchange.revocation_endpoint),
+    ] {
+        if let Some(url) = value {
+            if !endpoint_allowed(url) {
+                p.add(format!("\"oauth2.exchange.{key}\" must be an https URL"));
+            }
+            if key == "issuer" {
+                *url = url.trim_end_matches('/').to_string();
+            }
         }
     }
-    Some(Exchange {
-        url: url?.trim_end_matches('/').to_string(),
-        profile: profile?,
-        provider,
-    })
+    if exchange
+        .scopes
+        .iter()
+        .any(|s| s.contains(char::is_whitespace))
+    {
+        p.add("\"oauth2.exchange.scopes\" must not contain spaces; list one scope per item");
+    }
+    if exchange.provider.is_some() && exchange.issuer.is_none() {
+        p.add(
+            "\"oauth2.exchange.provider\" needs \"oauth2.exchange.issuer\" to read the list from",
+        );
+    }
+    Some(exchange)
 }
 
 /// R2 bucket names: 3–63 characters of lowercase letters, digits and hyphens, starting and
@@ -598,12 +659,12 @@ mod tests {
         let config = Config::parse(
             "[personal]\ntype=\"oauth2\"\naccount_id=\"abc123\"\n\
              [brokered]\ntype=\"oauth2\"\naccount_id=\"x\"\n\
-             [brokered.oauth2.exchange]\nurl=\"https://broker.example/\"\nprofile=\"a:b\"\n\
+             [brokered.oauth2.exchange]\nissuer = \"https://broker.example/\"\nscopes = [\"a:b\"]\n\
              [own]\ntype=\"oauth2\"\naccount_id=\"x\"\n\
              [own.oauth2]\nissuer=\"https://id.example\"\nclient_id=\"c\"\n\
              [both]\ntype=\"oauth2\"\naccount_id=\"x\"\n\
              [both.oauth2]\nissuer=\"https://id.example\"\nclient_id=\"c\"\n\
-             [both.oauth2.exchange]\nurl=\"https://broker.example\"\nprofile=\"a:b\"\n",
+             [both.oauth2.exchange]\nissuer = \"https://broker.example\"\nscopes = [\"a:b\"]\n",
         )
         .unwrap();
         let source = |name: &str| match &config.profile(name).unwrap().kind {
@@ -615,7 +676,8 @@ mod tests {
         assert!(matches!(source("own"), ProviderSource::Explicit { .. }));
         assert!(matches!(source("both"), ProviderSource::Explicit { .. }));
         let exchange = config.profile("brokered").unwrap().exchange().unwrap();
-        assert_eq!(exchange.url, "https://broker.example");
+        assert_eq!(exchange.issuer.as_deref(), Some("https://broker.example"));
+        assert_eq!(exchange.scopes, vec!["a:b".to_string()]);
     }
 
     #[test]
@@ -654,12 +716,89 @@ mod tests {
     }
 
     #[test]
-    fn exchange_needs_url_and_profile() {
+    fn exchange_needs_an_issuer_or_a_token_endpoint() {
         let e = parse_err("[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.oauth2.exchange]\n");
         assert!(
-            e.contains("exchange.url\" is required")
-                && e.contains("exchange.profile\" is required")
+            e.contains("needs an \"issuer\" or a \"token_endpoint\""),
+            "{e}"
         );
+    }
+
+    #[test]
+    fn the_old_exchange_keys_point_at_the_new_ones() {
+        let e = parse_err(
+            "[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.oauth2.exchange]\nurl=\"https://b\"\nprofile=\"p\"\n",
+        );
+        assert!(
+            e.contains("\"oauth2.exchange.url\" was renamed to \"oauth2.exchange.issuer\""),
+            "{e}"
+        );
+        assert!(
+            e.contains("\"oauth2.exchange.profile\" was replaced by"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn exchange_endpoints_scopes_and_audience_are_read() {
+        let config = Config::parse(
+            "[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n\
+             [a.oauth2]\nissuer=\"https://id.example\"\nclient_id=\"c\"\n\
+             [a.oauth2.exchange]\ntoken_endpoint=\"https://b.example/token\"\n\
+             revocation_endpoint=\"https://b.example/revoke\"\n\
+             scopes=[\"one\",\"two\"]\naudience=\"https://api.example\"\n",
+        )
+        .unwrap();
+        let exchange = config.profile("a").unwrap().exchange().unwrap();
+        assert_eq!(exchange.issuer, None);
+        assert_eq!(
+            exchange.token_endpoint.as_deref(),
+            Some("https://b.example/token")
+        );
+        assert_eq!(
+            exchange.revocation_endpoint.as_deref(),
+            Some("https://b.example/revoke")
+        );
+        assert_eq!(exchange.scopes, vec!["one".to_string(), "two".to_string()]);
+        assert_eq!(exchange.audience.as_deref(), Some("https://api.example"));
+        // The provider is the explicit one: there is no metadata to learn it from
+        assert!(matches!(
+            match &config.profile("a").unwrap().kind {
+                Kind::OAuth2(o) => o.provider_source(),
+                Kind::ApiToken => unreachable!(),
+            },
+            ProviderSource::Explicit { .. }
+        ));
+    }
+
+    #[test]
+    fn without_an_issuer_the_provider_must_be_explicit() {
+        let e = parse_err(
+            "[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.oauth2.exchange]\ntoken_endpoint=\"https://b/token\"\n",
+        );
+        assert!(
+            e.contains("\"oauth2.issuer\" and \"oauth2.client_id\" are required"),
+            "{e}"
+        );
+        let e = parse_err(
+            "[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.oauth2]\nissuer=\"https://i\"\nclient_id=\"c\"\n\
+             [a.oauth2.exchange]\ntoken_endpoint=\"https://b/token\"\nprovider=\"idp\"\n",
+        );
+        assert!(e.contains("\"oauth2.exchange.provider\" needs"), "{e}");
+    }
+
+    #[test]
+    fn exchange_urls_and_scopes_are_checked() {
+        let e = parse_err(
+            "[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.oauth2.exchange]\nissuer=\"http://b.example\"\n\
+             revocation_endpoint=\"ftp://b\"\nscopes=[\"two words\"]\n",
+        );
+        assert!(e.contains("exchange.issuer\" must be an https URL"), "{e}");
+        assert!(
+            e.contains("exchange.revocation_endpoint\" must be an https URL"),
+            "{e}"
+        );
+        assert!(e.contains("must not contain spaces"), "{e}");
     }
 
     #[test]
@@ -694,7 +833,7 @@ mod tests {
             .unwrap();
         let e = parse_err(
             "[a]\ntype=\"oauth2\"\naccount_id=\"x\"\n[a.r2]\nbucket=\"tf-state\"\n\
-             [a.oauth2.exchange]\nurl=\"https://b\"\nprofile=\"p\"\n",
+             [a.oauth2.exchange]\nissuer = \"https://b\"\nscopes = [\"p\"]\n",
         );
         assert!(e.contains("not allowed together with \"exchange\""));
     }
