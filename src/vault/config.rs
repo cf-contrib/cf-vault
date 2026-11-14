@@ -514,12 +514,21 @@ fn parse_oauth(table: Option<&Table>, p: &mut Problems<'_>) -> OAuth {
 }
 
 fn parse_exchange(table: &Table, p: &mut Problems<'_>) -> Option<Exchange> {
-    p.keys(table, &EXCHANGE_KEYS, "oauth2.exchange");
+    // The old keys get one pointed message each, not an "unknown key" on top of it
+    let current: Vec<&str> = EXCHANGE_KEYS.to_vec();
+    let known: Vec<&str> = current.iter().copied().chain(["url", "profile"]).collect();
+    p.keys(table, &known, "oauth2.exchange");
+    let mut renamed = false;
     if table.contains_key("url") {
         p.add("\"oauth2.exchange.url\" was renamed to \"oauth2.exchange.issuer\"");
+        renamed = true;
     }
     if table.contains_key("profile") {
         p.add("\"oauth2.exchange.profile\" was replaced by \"oauth2.exchange.scopes\"");
+        renamed = true;
+    }
+    if renamed {
+        return None;
     }
     let mut exchange = Exchange {
         issuer: p.string(table, "issuer", "oauth2.exchange."),
@@ -531,7 +540,6 @@ fn parse_exchange(table: &Table, p: &mut Problems<'_>) -> Option<Exchange> {
     };
     if exchange.issuer.is_none()
         && exchange.token_endpoint.is_none()
-        && !table.contains_key("url")
         && !table.contains_key("issuer")
         && !table.contains_key("token_endpoint")
     {
